@@ -352,6 +352,9 @@
     },
     "useAgenticRetrieval": {
       "value": "${USE_AGENTIC_RETRIEVAL=false}"
-    }
+    },
+      "clientId": {
+      "value": "${AZURE_CLIENT_ID}"
+    },
   }
 }
