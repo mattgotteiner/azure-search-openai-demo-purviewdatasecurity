@@ -355,6 +355,6 @@
     },
       "clientId": {
       "value": "${AZURE_CLIENT_ID}"
-    },
+    }
   }
 }
