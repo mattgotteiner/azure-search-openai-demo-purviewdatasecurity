@@ -17,7 +17,7 @@ urlFragment: azure-search-openai-demo
 ---
 -->
 
-# RAG chat app with Azure OpenAI and Azure AI Search (Python)
+# RAG chat app with Azure OpenAI and Azure AI Search (Python) + Purview Data Security Integration
 
 This sample is originally forked from [azure-search-openai-demo](https://github.com/Azure-Samples/azure-search-openai-demo) and has been modified to integrate with the **Microsoft Purview API**. This integration showcases how Purview can be used to **audit and secure AI prompts and responses**. Most of the deployment instructions remain the same as in the original repository. However, there are additional steps required for the Purview integration,and it has to be done pre-deployment phase and explained in the current readme.
 
