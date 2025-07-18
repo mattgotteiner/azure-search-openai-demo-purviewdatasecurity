@@ -178,7 +178,7 @@ A related option is VS Code Dev Containers, which will open the project in your 
 2. Clone this repo:
   
 ```bash  
-git clone https://github.com/Sak1012/azure-search-openai-demo.git
+git clone https://github.com/Azure-Samples/azure-search-openai-demo-purviewdatasecurity.git
 ```
 3. Continue with [Deployment](#deploying) and [Development Server](#running-the-development-server).
 
