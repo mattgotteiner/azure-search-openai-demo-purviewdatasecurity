@@ -5,7 +5,7 @@ export interface ProtectionScopeResult {
 }
 
 export async function getProtectionScope(accessToken: string, userId: string, previousEtag?: string): Promise<ProtectionScopeResult> {
-    const url = `https://graph.microsoft.com/beta/me/dataSecurityAndGovernance/protectionScopes/compute`;
+    const url = `https://graph.microsoft.com/v1.0/me/dataSecurityAndGovernance/protectionScopes/compute`;
 
     const headers: Record<string, string> = {
         Authorization: `Bearer ${accessToken}`,

@@ -50,7 +50,7 @@ export async function processContent(
         }
     };
 
-    const processContentUrl = `https://graph.microsoft.com/beta/me/dataSecurityAndGovernance/processContent`;
+    const processContentUrl = `https://graph.microsoft.com/v1.0/me/dataSecurityAndGovernance/processContent`;
 
     const headers = {
         Authorization: `Bearer ${accessToken}`,
