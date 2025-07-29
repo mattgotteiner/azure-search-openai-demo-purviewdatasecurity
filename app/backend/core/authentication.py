@@ -106,7 +106,7 @@ class AuthenticationHelper:
                 "scopes": [".default"],
                 # Uncomment the following line to cause a consent dialog to appear on every login
                 # For more information, please visit https://learn.microsoft.com/entra/identity-platform/v2-oauth2-auth-code-flow#request-an-authorization-code
-                "prompt": "consent"
+                # "prompt": "consent"
             },
             "tokenRequest": {
                 "scopes": [f"api://{self.server_app_id}/access_as_user"],
