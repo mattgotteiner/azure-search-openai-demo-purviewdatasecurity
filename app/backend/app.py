@@ -9,6 +9,21 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any, Union, cast
 
+# Configure logging level based on environment variable
+log_level = os.getenv("PYTHONLOGLEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, log_level, logging.INFO))
+
+# Also configure specific logger for labelhelper debug output
+labelhelper_logger = logging.getLogger("labelhelper-debug")
+labelhelper_logger.setLevel(logging.DEBUG)
+# Create console handler and set level to debug
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.DEBUG)
+# Create formatter
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+labelhelper_logger.addHandler(console_handler)
+
 from azure.cognitiveservices.speech import (
     ResultReason,
     SpeechConfig,
@@ -40,6 +55,7 @@ from opentelemetry.instrumentation.openai import OpenAIInstrumentor
 from quart import (
     Blueprint,
     Quart,
+    Response,
     abort,
     current_app,
     jsonify,
@@ -194,7 +210,11 @@ async def ask(auth_claims: dict[str, Any]):
         r = await approach.run(
             request_json["messages"], context=context, session_state=request_json.get("session_state")
         )
-        return jsonify(r)
+        # Use custom JSON encoder to properly serialize sensitivity data
+        return Response(
+            json.dumps(r, cls=JSONEncoder, ensure_ascii=False),
+            content_type='application/json'
+        )
     except Exception as error:
         return error_response(error, "/ask")
 
@@ -598,6 +618,7 @@ async def setup_clients():
             embeddings=text_embeddings_service,
             file_processors=file_processors,
             search_field_name_embedding=AZURE_SEARCH_FIELD_NAME_EMBEDDING,
+            use_acls=AZURE_ENFORCE_ACCESS_CONTROL,
         )
         current_app.config[CONFIG_INGESTER] = ingester
 
@@ -804,6 +825,7 @@ async def close_clients():
 
 def create_app():
     app = Quart(__name__)
+    app.json_encoder = JSONEncoder  # Configure custom JSON encoder for sensitivity data
     app.register_blueprint(bp)
     app.register_blueprint(chat_history_cosmosdb_bp)
 

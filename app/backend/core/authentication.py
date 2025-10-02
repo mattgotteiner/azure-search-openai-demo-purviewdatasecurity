@@ -229,7 +229,11 @@ class AuthenticationHelper:
             # Read the claims from the response. The oid and groups claims are used for security filtering
             # https://learn.microsoft.com/entra/identity-platform/id-token-claims-reference
             id_token_claims = graph_resource_access_token["id_token_claims"]
-            auth_claims = {"oid": id_token_claims["oid"], "groups": id_token_claims.get("groups", [])}
+            auth_claims = {
+                "oid": id_token_claims["oid"], 
+                "groups": id_token_claims.get("groups", []),
+                "graph_access_token": graph_resource_access_token.get("access_token")  # Graph API token for label resolution
+            }
 
             # A groups claim may have been omitted either because it was not added in the application manifest for the API application,
             # or a groups overage claim may have been emitted.
@@ -241,8 +245,15 @@ class AuthenticationHelper:
                 and "groups" in id_token_claims["_claim_names"]
             )
             if missing_groups_claim or has_group_overage_claim:
-                # Read the user's groups from Microsoft Graph
-                auth_claims["groups"] = await AuthenticationHelper.list_groups(graph_resource_access_token)
+                # Try to read the user's groups from Microsoft Graph
+                try:
+                    auth_claims["groups"] = await AuthenticationHelper.list_groups(graph_resource_access_token)
+                except AuthError as e:
+                    logging.warning("Could not read user groups from Microsoft Graph - insufficient permissions. Using empty groups list. Error: %s", e.error)
+                    auth_claims["groups"] = []
+                except Exception as e:
+                    logging.warning("Could not read user groups from Microsoft Graph. Using empty groups list. Error: %s", str(e))
+                    auth_claims["groups"] = []
             return auth_claims
         except AuthError as e:
             logging.exception("Exception getting authorization information - " + json.dumps(e.error))

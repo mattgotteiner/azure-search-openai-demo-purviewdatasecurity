@@ -12,6 +12,7 @@ import { parseAnswerToHtml } from "./AnswerParser";
 import { AnswerIcon } from "./AnswerIcon";
 import { SpeechOutputBrowser } from "./SpeechOutputBrowser";
 import { SpeechOutputAzure } from "./SpeechOutputAzure";
+import { ResponseSensitivityBanner } from "../ResponseSensitivityBanner";
 
 interface Props {
     answer: ChatAppResponse;
@@ -47,6 +48,16 @@ export const Answer = ({
     const { t } = useTranslation();
     const sanitizedAnswerHtml = DOMPurify.sanitize(parsedAnswer.answerHtml);
     const [copied, setCopied] = useState(false);
+
+    // Helper function to find the sensitivity label for a citation
+    const findLabelForCitation = (citationFileName: string) => {
+        if (!answer.context.sensitivity?.document_labels) return null;
+
+        return answer.context.sensitivity.document_labels.find(
+            docLabel =>
+                docLabel.source_file === citationFileName || docLabel.source_file.includes(citationFileName) || citationFileName.includes(docLabel.source_file)
+        );
+    };
 
     const handleCopy = () => {
         // Single replace to remove all HTML tags to remove the citations
@@ -102,21 +113,44 @@ export const Answer = ({
                 <div className={styles.answerText}>
                     <ReactMarkdown children={sanitizedAnswerHtml} rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]} />
                 </div>
+                {answer.context.sensitivity && <ResponseSensitivityBanner sensitivity={answer.context.sensitivity} />}
             </Stack.Item>
 
             {!!parsedAnswer.citations.length && (
                 <Stack.Item>
-                    <Stack horizontal wrap tokens={{ childrenGap: 5 }}>
+                    <div>
                         <span className={styles.citationLearnMore}>{t("citationWithColon")}</span>
-                        {parsedAnswer.citations.map((x, i) => {
-                            const path = getCitationFilePath(x);
-                            return (
-                                <a key={i} className={styles.citation} title={x} onClick={() => onCitationClicked(path)}>
-                                    {`${++i}. ${x}`}
-                                </a>
-                            );
-                        })}
-                    </Stack>
+                        <Stack tokens={{ childrenGap: 5 }}>
+                            {parsedAnswer.citations.map((x, i) => {
+                                const path = getCitationFilePath(x);
+                                const labelInfo = findLabelForCitation(x);
+
+                                return (
+                                    <div key={i} className={styles.citationContainer}>
+                                        <a className={styles.citation} title={x} onClick={() => onCitationClicked(path)}>
+                                            {`${++i}. ${x}`}
+                                        </a>
+                                        {labelInfo && (
+                                            <span
+                                                style={{
+                                                    fontSize: "0.75rem",
+                                                    fontWeight: "500",
+                                                    padding: "2px 6px",
+                                                    background: "#f0f0f0",
+                                                    color: "#666",
+                                                    borderRadius: "4px",
+                                                    border: "1px solid #ddd",
+                                                    marginLeft: "8px"
+                                                }}
+                                            >
+                                                {labelInfo.label.display_name || labelInfo.label.name}
+                                            </span>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </Stack>
+                    </div>
                 </Stack.Item>
             )}
 

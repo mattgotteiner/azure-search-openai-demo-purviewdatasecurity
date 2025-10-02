@@ -134,6 +134,7 @@ class UploadUserFileStrategy:
         embeddings: Optional[OpenAIEmbeddings] = None,
         image_embeddings: Optional[ImageEmbeddings] = None,
         search_field_name_embedding: Optional[str] = None,
+        use_acls: bool = True,
     ):
         self.file_processors = file_processors
         self.embeddings = embeddings
@@ -142,7 +143,7 @@ class UploadUserFileStrategy:
         self.search_manager = SearchManager(
             search_info=self.search_info,
             search_analyzer_name=None,
-            use_acls=True,
+            use_acls=use_acls,
             use_int_vectorization=False,
             embeddings=self.embeddings,
             field_name_embedding=search_field_name_embedding,

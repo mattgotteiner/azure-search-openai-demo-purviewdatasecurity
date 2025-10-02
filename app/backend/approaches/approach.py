@@ -50,6 +50,7 @@ class Document:
     score: Optional[float] = None
     reranker_score: Optional[float] = None
     search_agent_query: Optional[str] = None
+    metadata_sensitivity_label: Optional[str] = None
 
     def serialize_for_results(self) -> dict[str, Any]:
         result_dict = {
@@ -91,9 +92,35 @@ class ThoughtStep:
 
 
 @dataclass
+class SensitivityLabelInfo:
+    """Information about sensitivity label for display in the frontend."""
+    id: str
+    name: str
+    display_name: Optional[str] = None
+    color: str = "gray"
+    icon: str = "Info"
+
+
+@dataclass
+class DocumentLabelInfo:
+    """Label information for a specific cited document."""
+    document_id: str
+    source_file: str
+    label: SensitivityLabelInfo
+
+
+@dataclass
+class ResponseSensitivityInfo:
+    """Overall response sensitivity information."""
+    overall_label: SensitivityLabelInfo
+    document_labels: list[DocumentLabelInfo]
+
+
+@dataclass
 class DataPoints:
     text: Optional[list[str]] = None
     images: Optional[list] = None
+    sensitivity: Optional[ResponseSensitivityInfo] = None
 
 
 @dataclass
@@ -101,6 +128,7 @@ class ExtraInfo:
     data_points: DataPoints
     thoughts: Optional[list[ThoughtStep]] = None
     followup_questions: Optional[list[Any]] = None
+    sensitivity: Optional[ResponseSensitivityInfo] = None
 
 
 @dataclass
@@ -238,6 +266,7 @@ class Approach(ABC):
                         captions=cast(list[QueryCaptionResult], document.get("@search.captions")),
                         score=document.get("@search.score"),
                         reranker_score=document.get("@search.reranker_score"),
+                        metadata_sensitivity_label=document.get("metadata_sensitivity_label"),
                     )
                 )
 
