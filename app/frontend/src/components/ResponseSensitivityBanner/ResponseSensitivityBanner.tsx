@@ -1,7 +1,6 @@
 import React from "react";
 import { Icon, TooltipHost } from "@fluentui/react";
 import { ResponseSensitivityInfo } from "../../api";
-import styles from "./ResponseSensitivityBanner.module.css";
 
 interface Props {
     sensitivity: ResponseSensitivityInfo;

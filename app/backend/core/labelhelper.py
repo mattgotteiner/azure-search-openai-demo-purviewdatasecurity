@@ -10,7 +10,7 @@ from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 import aiohttp
 
-logger = logging.getLogger("labelhelper-debug")
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -41,43 +41,30 @@ class ResponseSensitivity:
 class LabelHelper:
     """Helper class for processing sensitivity labels from search results"""
     
-    # Cache for resolved Purview labels (GUID -> SensitivityLabel)
-    _label_cache: dict[str, SensitivityLabel] = {}
-    
     def __init__(self):
-        """
-        Initialize the label helper.
-        """
-        self._credential = None
-        
+        """Initialize the label helper."""
         # Check environment variables for Graph API features
         self.enable_graph_label_resolution = os.getenv("ENABLE_GRAPH_LABEL_RESOLUTION", "true").lower() == "true"
         
     async def _get_credential(self):
-        """Get or create Azure credential for API calls"""
-        if self._credential is None:
-            # Import here to avoid circular imports
-            from azure.identity.aio import AzureDeveloperCliCredential, ManagedIdentityCredential
-            
-            # Check if running on Azure (same logic as app.py)
-            RUNNING_ON_AZURE = os.getenv("WEBSITE_HOSTNAME") is not None or os.getenv("RUNNING_IN_PRODUCTION") is not None
-            AZURE_TENANT_ID = os.getenv("AZURE_TENANT_ID")
-            AZURE_CLIENT_ID = os.getenv("AZURE_CLIENT_ID")
-            
-            if RUNNING_ON_AZURE:
-                logger.debug("Setting up Azure credential using ManagedIdentityCredential")
-                if AZURE_CLIENT_ID:
-                    self._credential = ManagedIdentityCredential(client_id=AZURE_CLIENT_ID)
-                else:
-                    self._credential = ManagedIdentityCredential()
-            elif AZURE_TENANT_ID:
-                logger.debug(f"Setting up Azure credential using AzureDeveloperCliCredential with tenant_id {AZURE_TENANT_ID}")
-                self._credential = AzureDeveloperCliCredential(tenant_id=AZURE_TENANT_ID, process_timeout=60)
+        """Get Azure credential for API calls"""
+        # Import here to avoid circular imports
+        from azure.identity.aio import AzureDeveloperCliCredential, ManagedIdentityCredential
+        
+        # Check if running on Azure (same logic as app.py)
+        RUNNING_ON_AZURE = os.getenv("WEBSITE_HOSTNAME") is not None or os.getenv("RUNNING_IN_PRODUCTION") is not None
+        AZURE_TENANT_ID = os.getenv("AZURE_TENANT_ID")
+        AZURE_CLIENT_ID = os.getenv("AZURE_CLIENT_ID")
+        
+        if RUNNING_ON_AZURE:
+            if AZURE_CLIENT_ID:
+                return ManagedIdentityCredential(client_id=AZURE_CLIENT_ID)
             else:
-                logger.debug("Setting up Azure credential using AzureDeveloperCliCredential for home tenant")
-                self._credential = AzureDeveloperCliCredential(process_timeout=60)
-                
-        return self._credential
+                return ManagedIdentityCredential()
+        elif AZURE_TENANT_ID:
+            return AzureDeveloperCliCredential(tenant_id=AZURE_TENANT_ID, process_timeout=60)
+        else:
+            return AzureDeveloperCliCredential(process_timeout=60)
         
     async def _resolve_purview_label(self, label_id: str, user_access_token: Optional[str] = None) -> Optional[SensitivityLabel]:
         """
@@ -90,14 +77,7 @@ class LabelHelper:
         Returns:
             SensitivityLabel or None if resolution fails
         """
-        # Cache disabled for immediate priority updates
-        # if label_id in self._label_cache:
-        #     logger.debug(f"Found label {label_id} in cache")
-        #     return self._label_cache[label_id]
-            
         try:
-            logger.debug(f"Resolving Purview label GUID: {label_id}")
-            
             # Use user token if provided (delegated permissions), otherwise fall back to app credentials
             if user_access_token:
                 access_token = user_access_token
@@ -125,11 +105,8 @@ class LabelHelper:
                 }
                 
                 async with session.get(url, headers=headers, timeout=10.0) as response:
-                    
                     if response.status == 200:
                         label_data = await response.json()
-                        logger.info(f"Successfully resolved label {label_id}: {label_data.get('name')}")
-                        logger.debug(f"Full label data: {label_data}")
                         
                         # Extract label information
                         label_name = label_data.get('name', f'Label-{label_id[:8]}')
@@ -142,8 +119,6 @@ class LabelHelper:
                         # Get priority from API response
                         priority = label_data.get('priority', 0)
                         
-                        logger.debug(f"Label extraction: name='{label_name}', display_name='{display_name}', color='{api_color}', priority={priority}")
-                        
                         # Create the SensitivityLabel object
                         resolved_label = SensitivityLabel(
                             id=label_id,
@@ -153,23 +128,10 @@ class LabelHelper:
                             priority=priority
                         )
                         
-                        # Cache disabled for immediate priority updates
-                        # self._label_cache[label_id] = resolved_label
-                        # logger.debug(f"✓ Cached resolved label: {display_name}")
-                        logger.debug(f"*** Graph API label resolution SUCCESS for {label_id} ***")
-                        
                         return resolved_label
                     else:
                         error_text = await response.text()
-                        logger.error(f"Graph API label resolution failed for {label_id}: Status {response.status} \n Error: {error_text}")
-                        
-                        if response.status == 401:
-                            logger.error("Authentication failed - check Azure credentials")
-                        elif response.status == 403:
-                            logger.error("Forbidden - check Microsoft Graph permissions")
-                        elif response.status == 404:
-                            logger.error(f"Label {label_id} not found")
-                            
+                        logger.error(f"Graph API label resolution failed for {label_id}: Status {response.status}, Error: {error_text}")
                         return None
                         
         except Exception as e:
@@ -178,8 +140,6 @@ class LabelHelper:
         
     async def extract_labels_from_search_results(self, search_results: List[Dict[str, Any]], user_access_token: Optional[str] = None) -> List[DocumentLabel]:
         """Extract sensitivity labels from search results"""
-        logger.debug(f"Extracting labels from {len(search_results)} search results")
-        
         document_labels = []
         
         for i, result in enumerate(search_results):
@@ -225,7 +185,6 @@ class LabelHelper:
                     label=label
                 ))
         
-        logger.debug(f"Extracted {len(document_labels)} document labels")
         return document_labels
 
     def _is_guid(self, value: str) -> bool:
@@ -258,11 +217,6 @@ class LabelHelper:
         Returns:
             ResponseSensitivity with overall label, or None if no documents
         """
-        logger.debug(f"Computing label inheritance for {len(document_labels)} document labels")
-        
-        for i, dl in enumerate(document_labels):
-            logger.debug(f"Document {i}: {dl.source_file} -> {dl.label.display_name} (priority: {dl.label.priority})")
-            
         if not document_labels:
             # No labels found - return None to display nothing
             return None
@@ -274,15 +228,9 @@ class LabelHelper:
             # Sort by priority (higher is more sensitive)
             sorted_labels = sorted(labels_with_priority, key=lambda dl: dl.label.priority, reverse=True)
             chosen_label = sorted_labels[0].label
-            reason = f"Selected by priority ({chosen_label.priority}) from {len(document_labels)} document(s)"
-            logger.debug(f"Priority-based selection: {chosen_label.display_name} (priority: {chosen_label.priority})")
         else:
             # No priority available, just use the first document's label
             chosen_label = document_labels[0].label
-            reason = f"Selected first document label from {len(document_labels)} document(s)"
-            logger.debug(f"First document selection: {chosen_label.display_name}")
-        
-        logger.debug(f"Final selection: {chosen_label.display_name} - {reason}")
         
         return ResponseSensitivity(
             overall_label=chosen_label,

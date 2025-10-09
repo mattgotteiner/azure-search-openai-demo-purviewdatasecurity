@@ -1,4 +1,5 @@
 from collections.abc import Awaitable
+import logging
 from typing import Any, Optional, Union, cast
 
 from azure.search.documents.agent.aio import KnowledgeAgentRetrievalClient
@@ -23,7 +24,6 @@ from approaches.approach import (
 from approaches.chatapproach import ChatApproach
 from approaches.promptmanager import PromptManager
 from core.authentication import AuthenticationHelper
-from core.labelhelper import LabelHelper
 
 
 class ChatReadRetrieveReadApproach(ChatApproach):
@@ -79,7 +79,6 @@ class ChatReadRetrieveReadApproach(ChatApproach):
         self.answer_prompt = self.prompt_manager.load_prompt("chat_answer_question.prompty")
         self.reasoning_effort = reasoning_effort
         self.include_token_usage = True
-        self.label_helper = LabelHelper()
 
     async def run_until_final_call(
         self,
@@ -203,10 +202,9 @@ class ChatReadRetrieveReadApproach(ChatApproach):
         
         # Process sensitivity labels from search results
         try:
-            sensitivity_info = await self._process_sensitivity_labels(results, auth_claims)
-            print(f"SENSITIVITY PROCESSING COMPLETED: {sensitivity_info}")
+            sensitivity_info = await self.process_sensitivity_labels(results, auth_claims)
         except Exception as e:
-            print(f"ERROR in sensitivity processing: {e}")
+            logging.getLogger(__name__).warning(f"Failed to process sensitivity labels: {e}")
             sensitivity_info = None
 
         extra_info = ExtraInfo(
@@ -272,10 +270,9 @@ class ChatReadRetrieveReadApproach(ChatApproach):
         
         # Process sensitivity labels from search results
         try:
-            sensitivity_info = await self._process_sensitivity_labels(results, auth_claims)
-            print(f"AGENTIC: SENSITIVITY PROCESSING COMPLETED: {sensitivity_info}")
+            sensitivity_info = await self.process_sensitivity_labels(results, auth_claims)
         except Exception as e:
-            print(f"AGENTIC: ERROR in sensitivity processing: {e}")
+            logging.getLogger(__name__).warning(f"Failed to process sensitivity labels: {e}")
             sensitivity_info = None
 
         extra_info = ExtraInfo(
@@ -306,71 +303,3 @@ class ChatReadRetrieveReadApproach(ChatApproach):
             ],
         )
         return extra_info
-
-    async def _process_sensitivity_labels(self, results, auth_claims: dict[str, Any]) -> Optional[ResponseSensitivityInfo]:
-        """Process sensitivity labels from search results and compute response sensitivity."""
-        try:
-            
-            # Extract user's Graph access token for delegated inheritance computation
-            user_graph_token = auth_claims.get("graph_access_token")
-
-            
-            # Convert search results to dictionaries for label helper processing
-            search_results_dicts = []
-            for i, result in enumerate(results):
-                result_dict = {
-                    "id": getattr(result, "id", "unknown"),
-                    "sourcefile": getattr(result, "sourcefile", getattr(result, "sourcepage", "unknown")),
-                    "metadata_storage_name": getattr(result, "sourcefile", getattr(result, "sourcepage", "unknown")),
-                    "metadata_sensitivity_label": getattr(result, "metadata_sensitivity_label", None),
-                }
-                search_results_dicts.append(result_dict)
-            
-            # Extract document labels using the label helper
-            document_labels = await self.label_helper.extract_labels_from_search_results(search_results_dicts, user_graph_token)
-            
-            if not document_labels:
-                return None
-                
-            # Compute response sensitivity with user token for Graph API inheritance
-            response_sensitivity = await self.label_helper.compute_label_inheritance(document_labels, user_graph_token)
-            
-            if not response_sensitivity:
-                return None
-            
-            # Convert to frontend format
-            document_label_infos = []
-            for doc_label in response_sensitivity.document_labels:
-                badge_info = self.label_helper.get_sensitivity_badge_info(doc_label.label)
-                label_info = SensitivityLabelInfo(
-                    id=doc_label.label.id,
-                    name=doc_label.label.name,
-                    display_name=doc_label.label.display_name,
-                    color=badge_info["color"],
-                    icon=badge_info["icon"]
-                )
-                document_label_infos.append(DocumentLabelInfo(
-                    document_id=doc_label.document_id,
-                    source_file=doc_label.source_file,
-                    label=label_info
-                ))
-            
-            # Create overall response sensitivity info
-            overall_badge_info = self.label_helper.get_sensitivity_badge_info(response_sensitivity.overall_label)
-            overall_label_info = SensitivityLabelInfo(
-                id=response_sensitivity.overall_label.id,
-                name=response_sensitivity.overall_label.name,
-                display_name=response_sensitivity.overall_label.display_name,
-                color=overall_badge_info["color"],
-                icon=overall_badge_info["icon"]
-            )
-            
-            return ResponseSensitivityInfo(
-                overall_label=overall_label_info,
-                document_labels=document_label_infos
-            )
-            
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"Failed to process sensitivity labels: {e}")
-            return None

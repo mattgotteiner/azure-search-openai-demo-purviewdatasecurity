@@ -101,14 +101,29 @@ The repo includes sample data so it's ready to try end to end. In this sample ap
    - Search for `ProtectionScopes.Compute.User` and Select the permission.
    - Ensure that Grant admin consent is invoked by an administrator.
 
-4. **Configure Redirect URIs for Frontend App**  
+4. **Add Graph Permissions for Sensitivity Label API (Required for Label Resolution)**
+   Until the label friendly name and label priority properties are are added to the index,
+   we will use an extra call to the Label API to get this information to display on the UX.
+   
+   To enable the application to resolve Microsoft Purview sensitivity labels, add the following Microsoft Graph permissions to the **azure-search-openai-demo-frontend** app registration:
+   - In the registered app go to `Manage > API permissions`.
+   - Select `Add a Permission`
+   - Choose `Microsoft Graph` and select `Delegated Permissions`.
+   - Search for and add the following permissions:
+     - `InformationProtectionPolicy.Read` - Allows the app to read sensitivity labels and label policies
+     - `SecurityEvents.Read.All` - Allows reading security events (if needed for compliance scenarios)
+   - **Important**: Ensure that "Grant admin consent" is invoked by an administrator for these permissions.
+   
+   **Note**: These permissions enable the label resolution functionality that displays sensitivity labels from Microsoft Purview on both individual citations and overall response sensitivity. Without these permissions, labels will fall back to displaying basic label information without full metadata resolution.
+
+5. **Configure Redirect URIs for Frontend App**  
    - Add the following redirect URIs to the `azure-search-openai-demo-frontend` app registration in `Manage > Authentication`
      - `http://localhost:50505/`
      - `http://localhost:5173/` (Make sure this matches the port of your local setup)
      > This Port allows hot reloading for frontend while using the poweshell script
      - URL of the deployed web app (retrieved from the Azure portal or printed as "Endpoint" after `azd` completes).
 
-5. **Make the App support Multi-teant ID's**
+6. **Make the App support Multi-teant ID's**
     - Go to `Manage > Authentication` 
     - Under Supported account types select `Accounts in any organizational directory (Any Microsoft Entra ID tenant - Multitenant)`
 
