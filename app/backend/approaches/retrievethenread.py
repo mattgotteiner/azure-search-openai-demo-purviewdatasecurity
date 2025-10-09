@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Optional, cast
 
 from azure.search.documents.agent.aio import KnowledgeAgentRetrievalClient
@@ -6,7 +7,15 @@ from azure.search.documents.models import VectorQuery
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
 
-from approaches.approach import Approach, DataPoints, ExtraInfo, ThoughtStep
+from approaches.approach import (
+    Approach, 
+    DataPoints, 
+    DocumentLabelInfo, 
+    ExtraInfo, 
+    ResponseSensitivityInfo, 
+    SensitivityLabelInfo, 
+    ThoughtStep
+)
 from approaches.promptmanager import PromptManager
 from core.authentication import AuthenticationHelper
 
@@ -114,7 +123,12 @@ class RetrieveThenReadApproach(Approach):
                 "content": chat_completion.choices[0].message.content,
                 "role": chat_completion.choices[0].message.role,
             },
-            "context": extra_info,
+            "context": {
+                "data_points": extra_info.data_points.text,
+                "thoughts": extra_info.thoughts,
+                "followup_questions": extra_info.followup_questions,
+                "sensitivity": extra_info.sensitivity,  # Use sensitivity from extra_info level
+            },
             "session_state": session_state,
         }
 
@@ -152,9 +166,13 @@ class RetrieveThenReadApproach(Approach):
         )
 
         text_sources = self.get_sources_content(results, use_semantic_captions, use_image_citation=False)
+        
+        # Process sensitivity labels from search results
+        sensitivity_info = await self.process_sensitivity_labels(results, auth_claims)
 
         return ExtraInfo(
-            DataPoints(text=text_sources),
+            data_points=DataPoints(text=text_sources),
+            sensitivity=sensitivity_info,
             thoughts=[
                 ThoughtStep(
                     "Search using user query",
@@ -202,9 +220,13 @@ class RetrieveThenReadApproach(Approach):
         )
 
         text_sources = self.get_sources_content(results, use_semantic_captions=False, use_image_citation=False)
+        
+        # Process sensitivity labels from search results
+        sensitivity_info = await self.process_sensitivity_labels(results, auth_claims)
 
         extra_info = ExtraInfo(
-            DataPoints(text=text_sources),
+            data_points=DataPoints(text=text_sources),
+            sensitivity=sensitivity_info,
             thoughts=[
                 ThoughtStep(
                     "Use agentic retrieval",

@@ -49,6 +49,25 @@ export type ResponseMessage = {
     role: string;
 };
 
+export type SensitivityLabelInfo = {
+    id: string;
+    name: string;
+    display_name?: string;
+    color: string;
+    icon: string;
+};
+
+export type DocumentLabelInfo = {
+    document_id: string;
+    source_file: string;
+    label: SensitivityLabelInfo;
+};
+
+export type ResponseSensitivityInfo = {
+    overall_label: SensitivityLabelInfo;
+    document_labels: DocumentLabelInfo[];
+};
+
 export type Thoughts = {
     title: string;
     description: any; // It can be any output from the api
@@ -59,6 +78,7 @@ export type ResponseContext = {
     data_points: string[];
     followup_questions: string[] | null;
     thoughts: Thoughts[];
+    sensitivity?: ResponseSensitivityInfo;
 };
 
 export type ChatAppResponseOrError = {

@@ -1,4 +1,5 @@
 from collections.abc import Awaitable
+import logging
 from typing import Any, Optional, Union, cast
 
 from azure.search.documents.agent.aio import KnowledgeAgentRetrievalClient
@@ -12,7 +13,14 @@ from openai.types.chat import (
     ChatCompletionToolParam,
 )
 
-from approaches.approach import DataPoints, ExtraInfo, ThoughtStep
+from approaches.approach import (
+    DataPoints, 
+    DocumentLabelInfo, 
+    ExtraInfo, 
+    ResponseSensitivityInfo, 
+    SensitivityLabelInfo, 
+    ThoughtStep
+)
 from approaches.chatapproach import ChatApproach
 from approaches.promptmanager import PromptManager
 from core.authentication import AuthenticationHelper
@@ -191,9 +199,17 @@ class ChatReadRetrieveReadApproach(ChatApproach):
 
         # STEP 3: Generate a contextual and content specific answer using the search results and chat history
         text_sources = self.get_sources_content(results, use_semantic_captions, use_image_citation=False)
+        
+        # Process sensitivity labels from search results
+        try:
+            sensitivity_info = await self.process_sensitivity_labels(results, auth_claims)
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Failed to process sensitivity labels: {e}")
+            sensitivity_info = None
 
         extra_info = ExtraInfo(
-            DataPoints(text=text_sources),
+            data_points=DataPoints(text=text_sources),
+            sensitivity=sensitivity_info,
             thoughts=[
                 self.format_thought_step_for_chatcompletion(
                     title="Prompt to generate search query",
@@ -251,9 +267,17 @@ class ChatReadRetrieveReadApproach(ChatApproach):
         )
 
         text_sources = self.get_sources_content(results, use_semantic_captions=False, use_image_citation=False)
+        
+        # Process sensitivity labels from search results
+        try:
+            sensitivity_info = await self.process_sensitivity_labels(results, auth_claims)
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Failed to process sensitivity labels: {e}")
+            sensitivity_info = None
 
         extra_info = ExtraInfo(
-            DataPoints(text=text_sources),
+            data_points=DataPoints(text=text_sources),
+            sensitivity=sensitivity_info,
             thoughts=[
                 ThoughtStep(
                     "Use agentic retrieval",
