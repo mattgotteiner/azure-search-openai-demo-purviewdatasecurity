@@ -3,24 +3,21 @@ Sensitivity Label Helper for Microsoft Purview Integration
 Handles extraction, inheritance, and display of sensitivity labels from search results.
 """
 
-import logging
 import uuid
 import os
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 from dataclasses import dataclass
 import aiohttp
-
-logger = logging.getLogger(__name__)
-
 
 @dataclass
 class SensitivityLabel:
     """Represents a sensitivity label with metadata"""
     id: str
     name: str
-    display_name: str
+    display_name: Optional[str] = None
     color: str = "gray"
     priority: int = 0
+    icon: str = "Info" 
     
     
 @dataclass  
@@ -39,12 +36,6 @@ class ResponseSensitivity:
 
 
 class LabelHelper:
-    """Helper class for processing sensitivity labels from search results"""
-    
-    def __init__(self):
-        """Initialize the label helper."""
-        # Check environment variables for Graph API features
-        self.enable_graph_label_resolution = os.getenv("ENABLE_GRAPH_LABEL_RESOLUTION", "true").lower() == "true"
         
     async def _get_credential(self):
         """Get Azure credential for API calls"""
@@ -80,22 +71,17 @@ class LabelHelper:
         try:
             # Use user token if provided (delegated permissions), otherwise fall back to app credentials
             if user_access_token:
-                access_token = user_access_token
-                # Remove 'Bearer ' prefix if present
-                if access_token.startswith('Bearer '):
-                    access_token = access_token[7:]
+                access_token = user_access_token.removeprefix('Bearer ')
             else:
                 credential = await self._get_credential()
                 if not credential:
-                    logger.warning("No credential available for Graph API call")
                     return None
                     
                 token = await credential.get_token("https://graph.microsoft.com/.default")
                 access_token = token.token
             
             # Try to get label details from Microsoft Graph API
-            graph_base_url = "https://graph.microsoft.com/v1.0"
-            url = f"{graph_base_url}/security/dataSecurityAndGovernance/sensitivityLabels/{label_id}"
+            url = f"https://graph.microsoft.com/v1.0/security/dataSecurityAndGovernance/sensitivityLabels/{label_id}"
             
             async with aiohttp.ClientSession() as session:
                 headers = {
@@ -111,7 +97,7 @@ class LabelHelper:
                         # Extract label information
                         label_name = label_data.get('name', f'Label-{label_id[:8]}')
                         raw_display_name = label_data.get('displayName')
-                        display_name = raw_display_name if raw_display_name else label_name
+                        display_name = raw_display_name if raw_display_name else None
                         
                         # Get actual color from API response
                         api_color = label_data.get('color', '#808080')  # Default to gray if no color
@@ -125,65 +111,51 @@ class LabelHelper:
                             name=label_name,
                             display_name=display_name,
                             color=api_color,
-                            priority=priority
+                            priority=priority,
+                            icon="Shield"
                         )
                         
                         return resolved_label
                     else:
-                        error_text = await response.text()
-                        logger.error(f"Graph API label resolution failed for {label_id}: Status {response.status}, Error: {error_text}")
                         return None
                         
-        except Exception as e:
-            logger.error(f"Exception during Graph API label resolution for {label_id}: {str(e)}")
+        except Exception:
             return None
         
-    async def extract_labels_from_search_results(self, search_results: List[Dict[str, Any]], user_access_token: Optional[str] = None) -> List[DocumentLabel]:
+    async def extract_labels_from_search_results(self, search_results, user_access_token: Optional[str] = None) -> List[DocumentLabel]:
         """Extract sensitivity labels from search results"""
         document_labels = []
         
         for i, result in enumerate(search_results):
-            doc_id = result.get("id", f"unknown_{i}")
-            # Try multiple potential source file field names
-            source_file = (
-                result.get("sourcefile") or 
-                result.get("source_file") or 
-                result.get("metadata_storage_name") or 
-                "unknown"
-            )
+            doc_id = result.id or f"unknown_{i}"
+            source_file = result.sourcefile or result.sourcepage or "unknown"
+            metadata_sensitivity_label = result.metadata_sensitivity_label
             
-            # Check the actual indexer field first
-            metadata_sensitivity_label = result.get("metadata_sensitivity_label")
+            if not metadata_sensitivity_label:
+                continue
             
-            effective_label = metadata_sensitivity_label
-            
+            # Try to resolve as GUID first, then fallback to string label
             label = None
-            
-            # First try to get label from the indexer metadata
-            if effective_label:
-                # Check if it's a GUID (potential Purview label ID)
-                if self._is_guid(effective_label) and self.enable_graph_label_resolution:
-                    label = await self._resolve_purview_label(effective_label, user_access_token)
-                    if not label:
-                        # Create fallback GUID label if resolution failed
-                        label = SensitivityLabel(
-                            id=effective_label,
-                            name=f"Purview Label ({effective_label[:8]}...)",
-                            display_name=f"Purview Label (ID: {effective_label[:8]}...)",
-                            color="orange",
-                            priority=0
-                        )
-                
-                # If not resolved yet, try to create from string
+            if self._is_guid(metadata_sensitivity_label):
+                label = await self._resolve_purview_label(metadata_sensitivity_label, user_access_token)
                 if not label:
-                    label = self._create_label_from_string(effective_label)
+                    # Create fallback GUID label if resolution failed
+                    label = SensitivityLabel(
+                        id=metadata_sensitivity_label,
+                        name=f"Purview Label ({metadata_sensitivity_label[:8]}...)",
+                        display_name=f"Purview Label (ID: {metadata_sensitivity_label[:8]}...)",
+                        color="orange",
+                        priority=0,
+                        icon="Warning"
+                    )
+            else:
+                label = self._create_label_from_string(metadata_sensitivity_label)
             
-            if label:
-                document_labels.append(DocumentLabel(
-                    document_id=doc_id,
-                    source_file=source_file,
-                    label=label
-                ))
+            document_labels.append(DocumentLabel(
+                document_id=doc_id,
+                source_file=source_file,
+                label=label
+            ))
         
         return document_labels
 
@@ -196,53 +168,32 @@ class LabelHelper:
             return False
 
     def _create_label_from_string(self, label_name: str) -> SensitivityLabel:
-        """Create a SensitivityLabel from a label name string - preserving exact name"""
+        """Create a SensitivityLabel from a label name string"""
         return SensitivityLabel(
             id=label_name.lower().replace(" ", "-"),
             name=label_name,
             display_name=label_name,
             color="orange",
-            priority=0
+            priority=0,
+            icon="Info"
         )
             
-    async def compute_label_inheritance(self, document_labels: list[DocumentLabel], user_access_token: Optional[str] = None) -> ResponseSensitivity:
+    async def compute_label_inheritance(self, document_labels: list[DocumentLabel]) -> ResponseSensitivity:
         """
         Compute the overall sensitivity label for a response based on document labels.
-        Uses priority from resolved labels, or picks first document if no priority available.
-        
-        Args:
-            document_labels: List of DocumentLabel objects
-            user_access_token: Optional user access token (unused but kept for compatibility)
-            
-        Returns:
-            ResponseSensitivity with overall label, or None if no documents
+        Uses highest priority label, or first document if no priorities.
         """
         if not document_labels:
-            # No labels found - return None to display nothing
             return None
         
-        # Check if any labels have priority values
-        labels_with_priority = [dl for dl in document_labels if dl.label.priority > 0]
-        
-        if labels_with_priority:
-            # Sort by priority (higher is more sensitive)
-            sorted_labels = sorted(labels_with_priority, key=lambda dl: dl.label.priority, reverse=True)
-            chosen_label = sorted_labels[0].label
-        else:
-            # No priority available, just use the first document's label
-            chosen_label = document_labels[0].label
+        # Find highest priority label, or use first document
+        priority_labels = [dl for dl in document_labels if dl.label.priority > 0]
+        chosen_label = (
+            max(priority_labels, key=lambda dl: dl.label.priority).label
+            if priority_labels else document_labels[0].label
+        )
         
         return ResponseSensitivity(
             overall_label=chosen_label,
             document_labels=document_labels
         )
-
-    def get_sensitivity_badge_info(self, label: SensitivityLabel) -> dict[str, any]:
-        """Get badge information for displaying sensitivity labels"""
-        return {
-            "text": label.display_name,
-            "color": label.color,
-            "priority": label.priority,
-            "id": label.id,
-            "icon": "🔒"
-        }

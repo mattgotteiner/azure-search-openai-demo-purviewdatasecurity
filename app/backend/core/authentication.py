@@ -245,15 +245,8 @@ class AuthenticationHelper:
                 and "groups" in id_token_claims["_claim_names"]
             )
             if missing_groups_claim or has_group_overage_claim:
-                # Try to read the user's groups from Microsoft Graph
-                try:
-                    auth_claims["groups"] = await AuthenticationHelper.list_groups(graph_resource_access_token)
-                except AuthError as e:
-                    logging.warning("Could not read user groups from Microsoft Graph - insufficient permissions. Using empty groups list. Error: %s", e.error)
-                    auth_claims["groups"] = []
-                except Exception as e:
-                    logging.warning("Could not read user groups from Microsoft Graph. Using empty groups list. Error: %s", str(e))
-                    auth_claims["groups"] = []
+                # Read the user's groups from Microsoft Graph
+                auth_claims["groups"] = await AuthenticationHelper.list_groups(graph_resource_access_token)
             return auth_claims
         except AuthError as e:
             logging.exception("Exception getting authorization information - " + json.dumps(e.error))

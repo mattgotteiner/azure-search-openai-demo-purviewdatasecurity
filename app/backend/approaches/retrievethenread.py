@@ -1,4 +1,3 @@
-import logging
 from typing import Any, Optional, cast
 
 from azure.search.documents.agent.aio import KnowledgeAgentRetrievalClient
@@ -7,15 +6,7 @@ from azure.search.documents.models import VectorQuery
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
 
-from approaches.approach import (
-    Approach, 
-    DataPoints, 
-    DocumentLabelInfo, 
-    ExtraInfo, 
-    ResponseSensitivityInfo, 
-    SensitivityLabelInfo, 
-    ThoughtStep
-)
+from approaches.approach import Approach, DataPoints, ExtraInfo, ThoughtStep
 from approaches.promptmanager import PromptManager
 from core.authentication import AuthenticationHelper
 
@@ -168,7 +159,11 @@ class RetrieveThenReadApproach(Approach):
         text_sources = self.get_sources_content(results, use_semantic_captions, use_image_citation=False)
         
         # Process sensitivity labels from search results
-        sensitivity_info = await self.process_sensitivity_labels(results, auth_claims)
+        try:
+            sensitivity_info = await self.process_sensitivity_labels(results, auth_claims)
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Failed to process sensitivity labels: {e}")
+            sensitivity_info = None
 
         return ExtraInfo(
             data_points=DataPoints(text=text_sources),
@@ -222,7 +217,11 @@ class RetrieveThenReadApproach(Approach):
         text_sources = self.get_sources_content(results, use_semantic_captions=False, use_image_citation=False)
         
         # Process sensitivity labels from search results
-        sensitivity_info = await self.process_sensitivity_labels(results, auth_claims)
+        try:
+            sensitivity_info = await self.process_sensitivity_labels(results, auth_claims)
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Failed to process sensitivity labels: {e}")
+            sensitivity_info = None
 
         extra_info = ExtraInfo(
             data_points=DataPoints(text=text_sources),

@@ -1,5 +1,4 @@
 import os
-import logging
 from abc import ABC
 from collections.abc import AsyncGenerator, Awaitable
 from dataclasses import dataclass
@@ -36,6 +35,11 @@ from openai.types.chat import (
 
 from approaches.promptmanager import PromptManager
 from core.authentication import AuthenticationHelper
+
+# Import for type hints - will be fully imported in methods to avoid circular imports
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from core.labelhelper import ResponseSensitivity
 
 
 @dataclass
@@ -93,35 +97,10 @@ class ThoughtStep:
 
 
 @dataclass
-class SensitivityLabelInfo:
-    """Information about sensitivity label for display in the frontend."""
-    id: str
-    name: str
-    display_name: Optional[str] = None
-    color: str = "gray"
-    icon: str = "Info"
-
-
-@dataclass
-class DocumentLabelInfo:
-    """Label information for a specific cited document."""
-    document_id: str
-    source_file: str
-    label: SensitivityLabelInfo
-
-
-@dataclass
-class ResponseSensitivityInfo:
-    """Overall response sensitivity information."""
-    overall_label: SensitivityLabelInfo
-    document_labels: list[DocumentLabelInfo]
-
-
-@dataclass
 class DataPoints:
     text: Optional[list[str]] = None
     images: Optional[list] = None
-    sensitivity: Optional[ResponseSensitivityInfo] = None
+    sensitivity: Optional["ResponseSensitivity"] = None
 
 
 @dataclass
@@ -129,7 +108,7 @@ class ExtraInfo:
     data_points: DataPoints
     thoughts: Optional[list[ThoughtStep]] = None
     followup_questions: Optional[list[Any]] = None
-    sensitivity: Optional[ResponseSensitivityInfo] = None
+    sensitivity: Optional["ResponseSensitivity"] = None
 
 
 @dataclass
@@ -522,70 +501,23 @@ class Approach(ABC):
     ) -> AsyncGenerator[dict[str, Any], None]:
         raise NotImplementedError
 
-    async def process_sensitivity_labels(self, results, auth_claims: dict[str, Any]) -> Optional[ResponseSensitivityInfo]:
+    async def process_sensitivity_labels(self, results, auth_claims: dict[str, Any]) -> Optional["ResponseSensitivity"]:
         """Process sensitivity labels from search results and compute response sensitivity."""
         try:
             # Import here to avoid circular imports
             from core.labelhelper import LabelHelper
             
-            # Convert search results to dictionaries for label helper processing
-            search_results_dicts = []
-            for i, result in enumerate(results):
-                result_dict = {
-                    "id": getattr(result, "id", "unknown"),
-                    "sourcefile": getattr(result, "sourcefile", getattr(result, "sourcepage", "unknown")),
-                    "metadata_storage_name": getattr(result, "sourcefile", getattr(result, "sourcepage", "unknown")),
-                    "metadata_sensitivity_label": getattr(result, "metadata_sensitivity_label", None),
-                }
-                search_results_dicts.append(result_dict)
-                        
             # Extract user's Graph access token for delegated label resolution
             user_graph_token = auth_claims.get("graph_access_token")
 
             label_helper = LabelHelper()
-            document_labels = await label_helper.extract_labels_from_search_results(search_results_dicts, user_graph_token)
+            document_labels = await label_helper.extract_labels_from_search_results(results, user_graph_token)
             
             if not document_labels:
                 return None
                 
-            # Compute response sensitivity with user token for Graph API inheritance
-            response_sensitivity = await label_helper.compute_label_inheritance(document_labels, user_graph_token)
-            
-            if not response_sensitivity:
-                return None
-            
-            # Convert to frontend format
-            document_label_infos = []
-            for doc_label in response_sensitivity.document_labels:
-                badge_info = label_helper.get_sensitivity_badge_info(doc_label.label)
-                label_info = SensitivityLabelInfo(
-                    id=doc_label.label.id,
-                    name=doc_label.label.name,
-                    display_name=doc_label.label.display_name,
-                    color=badge_info["color"],
-                    icon=badge_info["icon"]
-                )
-                document_label_infos.append(DocumentLabelInfo(
-                    document_id=doc_label.document_id,
-                    source_file=doc_label.source_file,
-                    label=label_info
-                ))
-            
-            # Create overall response sensitivity info
-            overall_badge_info = label_helper.get_sensitivity_badge_info(response_sensitivity.overall_label)
-            overall_label_info = SensitivityLabelInfo(
-                id=response_sensitivity.overall_label.id,
-                name=response_sensitivity.overall_label.name,
-                display_name=response_sensitivity.overall_label.display_name,
-                color=overall_badge_info["color"],
-                icon=overall_badge_info["icon"]
-            )
-            
-            return ResponseSensitivityInfo(
-                overall_label=overall_label_info,
-                document_labels=document_label_infos
-            )
+            # Compute response sensitivity
+            return await label_helper.compute_label_inheritance(document_labels)
             
         except Exception as e:
-            logging.getLogger(__name__).warning(f"Failed to process sensitivity labels: {e}")
             return None

@@ -54,6 +54,7 @@ export type SensitivityLabelInfo = {
     name: string;
     display_name?: string;
     color: string;
+    priority?: number;
     icon: string;
 };
 
