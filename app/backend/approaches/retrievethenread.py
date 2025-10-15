@@ -162,7 +162,6 @@ class RetrieveThenReadApproach(Approach):
         try:
             sensitivity_info = await self.process_sensitivity_labels(results, auth_claims)
         except Exception as e:
-            logging.getLogger(__name__).warning(f"Failed to process sensitivity labels: {e}")
             sensitivity_info = None
 
         return ExtraInfo(
@@ -220,7 +219,6 @@ class RetrieveThenReadApproach(Approach):
         try:
             sensitivity_info = await self.process_sensitivity_labels(results, auth_claims)
         except Exception as e:
-            logging.getLogger(__name__).warning(f"Failed to process sensitivity labels: {e}")
             sensitivity_info = None
 
         extra_info = ExtraInfo(

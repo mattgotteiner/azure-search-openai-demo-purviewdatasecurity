@@ -5,7 +5,8 @@ Handles extraction, inheritance, and display of sensitivity labels from search r
 
 import uuid
 import os
-from typing import Optional, List
+import time
+from typing import Optional, List, Dict, Tuple
 from dataclasses import dataclass
 import aiohttp
 
@@ -36,6 +37,25 @@ class ResponseSensitivity:
 
 
 class LabelHelper:
+    _label_cache: Dict[str, Tuple[Optional[SensitivityLabel], float]] = {}
+    _cache_duration_seconds = 2 * 60 * 60  # 2 hours
+    
+    def _get_cached_label(self, label_id: str) -> Optional[SensitivityLabel]:
+        """Retrieve a label from cache if it exists and is still valid."""
+        if label_id not in self._label_cache:
+            return None
+            
+        cached_label, timestamp = self._label_cache[label_id]
+        if (time.time() - timestamp) < self._cache_duration_seconds:
+            return cached_label
+        
+        # Remove expired entry
+        del self._label_cache[label_id]
+        return None
+    
+    def _cache_label(self, label_id: str, label: Optional[SensitivityLabel]) -> None:
+        """Store a label in cache with current timestamp."""
+        self._label_cache[label_id] = (label, time.time())
         
     async def _get_credential(self):
         """Get Azure credential for API calls"""
@@ -60,14 +80,11 @@ class LabelHelper:
     async def _resolve_purview_label(self, label_id: str, user_access_token: Optional[str] = None) -> Optional[SensitivityLabel]:
         """
         Resolve a Purview label GUID to a SensitivityLabel using Microsoft Graph API.
-        
-        Args:
-            label_id: The GUID of the Purview label
-            user_access_token: Optional user access token for delegated permissions
-            
-        Returns:
-            SensitivityLabel or None if resolution fails
+        Results are cached for 2 hours to reduce API calls.
         """
+        if cached_label := self._get_cached_label(label_id):
+            return cached_label
+        
         try:
             # Use user token if provided (delegated permissions), otherwise fall back to app credentials
             if user_access_token:
@@ -75,6 +92,7 @@ class LabelHelper:
             else:
                 credential = await self._get_credential()
                 if not credential:
+                    self._cache_label(label_id, None)
                     return None
                     
                 token = await credential.get_token("https://graph.microsoft.com/.default")
@@ -114,13 +132,16 @@ class LabelHelper:
                             priority=priority,
                             icon="Shield"
                         )
-                        
+                        self._cache_label(label_id, resolved_label)
                         return resolved_label
                     else:
                         return None
                         
         except Exception:
-            return None
+            pass
+            
+        self._cache_label(label_id, None)
+        return None
         
     async def extract_labels_from_search_results(self, search_results, user_access_token: Optional[str] = None) -> List[DocumentLabel]:
         """Extract sensitivity labels from search results"""
@@ -179,10 +200,7 @@ class LabelHelper:
         )
             
     async def compute_label_inheritance(self, document_labels: list[DocumentLabel]) -> ResponseSensitivity:
-        """
-        Compute the overall sensitivity label for a response based on document labels.
-        Uses highest priority label, or first document if no priorities.
-        """
+        """Compute the overall sensitivity label for a response based on document labels."""
         if not document_labels:
             return None
         
