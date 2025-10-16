@@ -130,22 +130,7 @@ export const Answer = ({
                                         <a className={styles.citation} title={x} onClick={() => onCitationClicked(path)}>
                                             {`${++i}. ${x}`}
                                         </a>
-                                        {labelInfo && (
-                                            <span
-                                                style={{
-                                                    fontSize: "0.75rem",
-                                                    fontWeight: "500",
-                                                    padding: "2px 6px",
-                                                    background: "#f0f0f0",
-                                                    color: "#666",
-                                                    borderRadius: "4px",
-                                                    border: "1px solid #ddd",
-                                                    marginLeft: "8px"
-                                                }}
-                                            >
-                                                {labelInfo.label.display_name || labelInfo.label.name}
-                                            </span>
-                                        )}
+                                        {labelInfo && <span className={styles.citationLabel}>{labelInfo.label.display_name || labelInfo.label.name}</span>}
                                     </div>
                                 );
                             })}

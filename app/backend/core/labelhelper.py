@@ -10,15 +10,45 @@ from typing import Optional, List, Dict, Tuple
 from dataclasses import dataclass
 import aiohttp
 
+
+class LabelError(Exception):
+    """Base exception for label-related errors"""
+    pass
+
+
+@dataclass
+class LabelConfig:
+    """Configuration constants for label processing"""
+    # Cache settings
+    CACHE_DURATION_SECONDS: int = 2 * 60 * 60  # 2 hours
+    
+    # API settings
+    API_TIMEOUT_SECONDS: float = 10.0
+    CREDENTIAL_TIMEOUT_SECONDS: int = 60
+    GRAPH_API_SCOPE: str = "https://graph.microsoft.com/.default"
+    
+    # Default colors (hex values)
+    DEFAULT_COLOR: str = "#808080"  # Gray
+    FALLBACK_COLOR: str = "#FFA500"  # Orange
+    STRING_LABEL_COLOR: str = "#FFA500"  # Orange
+    
+    # Default icons
+    DEFAULT_ICON: str = "Info"
+    SUCCESS_ICON: str = "Shield"
+    WARNING_ICON: str = "Warning"
+    
+    # Fallback text
+    UNKNOWN_SOURCE: str = "unknown"
+
 @dataclass
 class SensitivityLabel:
     """Represents a sensitivity label with metadata"""
     id: str
     name: str
     display_name: Optional[str] = None
-    color: str = "gray"
+    color: str = LabelConfig.DEFAULT_COLOR
     priority: int = 0
-    icon: str = "Info" 
+    icon: str = LabelConfig.DEFAULT_ICON 
     
     
 @dataclass  
@@ -37,8 +67,10 @@ class ResponseSensitivity:
 
 
 class LabelHelper:
-    _label_cache: Dict[str, Tuple[Optional[SensitivityLabel], float]] = {}
-    _cache_duration_seconds = 2 * 60 * 60  # 2 hours
+    def __init__(self, config: Optional[LabelConfig] = None):
+        self._config = config or LabelConfig()
+        self._label_cache: Dict[str, Tuple[Optional[SensitivityLabel], float]] = {}
+        self._cache_duration_seconds = self._config.CACHE_DURATION_SECONDS
     
     def _get_cached_label(self, label_id: str) -> Optional[SensitivityLabel]:
         """Retrieve a label from cache if it exists and is still valid."""
@@ -59,23 +91,26 @@ class LabelHelper:
         
     async def _get_credential(self):
         """Get Azure credential for API calls"""
-        # Import here to avoid circular imports
-        from azure.identity.aio import AzureDeveloperCliCredential, ManagedIdentityCredential
-        
-        # Check if running on Azure (same logic as app.py)
-        RUNNING_ON_AZURE = os.getenv("WEBSITE_HOSTNAME") is not None or os.getenv("RUNNING_IN_PRODUCTION") is not None
-        AZURE_TENANT_ID = os.getenv("AZURE_TENANT_ID")
-        AZURE_CLIENT_ID = os.getenv("AZURE_CLIENT_ID")
-        
-        if RUNNING_ON_AZURE:
-            if AZURE_CLIENT_ID:
-                return ManagedIdentityCredential(client_id=AZURE_CLIENT_ID)
+        try:
+            # Import here to avoid circular imports
+            from azure.identity.aio import AzureDeveloperCliCredential, ManagedIdentityCredential
+            
+            # Check if running on Azure (same logic as app.py)
+            RUNNING_ON_AZURE = os.getenv("WEBSITE_HOSTNAME") is not None or os.getenv("RUNNING_IN_PRODUCTION") is not None
+            AZURE_TENANT_ID = os.getenv("AZURE_TENANT_ID")
+            AZURE_CLIENT_ID = os.getenv("AZURE_CLIENT_ID")
+            
+            if RUNNING_ON_AZURE:
+                if AZURE_CLIENT_ID:
+                    return ManagedIdentityCredential(client_id=AZURE_CLIENT_ID)
+                else:
+                    return ManagedIdentityCredential()
+            elif AZURE_TENANT_ID:
+                return AzureDeveloperCliCredential(tenant_id=AZURE_TENANT_ID, process_timeout=self._config.CREDENTIAL_TIMEOUT_SECONDS)
             else:
-                return ManagedIdentityCredential()
-        elif AZURE_TENANT_ID:
-            return AzureDeveloperCliCredential(tenant_id=AZURE_TENANT_ID, process_timeout=60)
-        else:
-            return AzureDeveloperCliCredential(process_timeout=60)
+                return AzureDeveloperCliCredential(process_timeout=self._config.CREDENTIAL_TIMEOUT_SECONDS)
+        except Exception as e:
+            raise LabelError(f"Failed to create Azure credential: {e}")
         
     async def _resolve_purview_label(self, label_id: str, user_access_token: Optional[str] = None) -> Optional[SensitivityLabel]:
         """
@@ -95,7 +130,7 @@ class LabelHelper:
                     self._cache_label(label_id, None)
                     return None
                     
-                token = await credential.get_token("https://graph.microsoft.com/.default")
+                token = await credential.get_token(self._config.GRAPH_API_SCOPE)
                 access_token = token.token
             
             # Try to get label details from Microsoft Graph API
@@ -108,7 +143,7 @@ class LabelHelper:
                     "User-Agent": "Purview-Python-Client"
                 }
                 
-                async with session.get(url, headers=headers, timeout=10.0) as response:
+                async with session.get(url, headers=headers, timeout=self._config.API_TIMEOUT_SECONDS) as response:
                     if response.status == 200:
                         label_data = await response.json()
                         
@@ -118,7 +153,7 @@ class LabelHelper:
                         display_name = raw_display_name if raw_display_name else None
                         
                         # Get actual color from API response
-                        api_color = label_data.get('color', '#808080')  # Default to gray if no color
+                        api_color = label_data.get('color', self._config.DEFAULT_COLOR)
                         
                         # Get priority from API response
                         priority = label_data.get('priority', 0)
@@ -130,12 +165,10 @@ class LabelHelper:
                             display_name=display_name,
                             color=api_color,
                             priority=priority,
-                            icon="Shield"
+                            icon=self._config.SUCCESS_ICON
                         )
                         self._cache_label(label_id, resolved_label)
                         return resolved_label
-                    else:
-                        return None
                         
         except Exception:
             pass
@@ -149,7 +182,7 @@ class LabelHelper:
         
         for i, result in enumerate(search_results):
             doc_id = result.id or f"unknown_{i}"
-            source_file = result.sourcefile or result.sourcepage or "unknown"
+            source_file = result.sourcefile or result.sourcepage or self._config.UNKNOWN_SOURCE
             metadata_sensitivity_label = result.metadata_sensitivity_label
             
             if not metadata_sensitivity_label:
@@ -160,14 +193,14 @@ class LabelHelper:
             if self._is_guid(metadata_sensitivity_label):
                 label = await self._resolve_purview_label(metadata_sensitivity_label, user_access_token)
                 if not label:
-                    # Create fallback GUID label if resolution failed
+                    # Create fallback GUID label if resolution failed or returned None
                     label = SensitivityLabel(
                         id=metadata_sensitivity_label,
                         name=f"Purview Label ({metadata_sensitivity_label[:8]}...)",
                         display_name=f"Purview Label (ID: {metadata_sensitivity_label[:8]}...)",
-                        color="orange",
+                        color=self._config.FALLBACK_COLOR,
                         priority=0,
-                        icon="Warning"
+                        icon=self._config.WARNING_ICON
                     )
             else:
                 label = self._create_label_from_string(metadata_sensitivity_label)
@@ -194,9 +227,9 @@ class LabelHelper:
             id=label_name.lower().replace(" ", "-"),
             name=label_name,
             display_name=label_name,
-            color="orange",
+            color=self._config.STRING_LABEL_COLOR,
             priority=0,
-            icon="Info"
+            icon=self._config.DEFAULT_ICON
         )
             
     async def compute_label_inheritance(self, document_labels: list[DocumentLabel]) -> ResponseSensitivity:
