@@ -1,5 +1,4 @@
 from collections.abc import Awaitable
-import logging
 from typing import Any, Optional, Union, cast
 
 from azure.search.documents.agent.aio import KnowledgeAgentRetrievalClient
@@ -13,14 +12,7 @@ from openai.types.chat import (
     ChatCompletionToolParam,
 )
 
-from approaches.approach import (
-    DataPoints, 
-    DocumentLabelInfo, 
-    ExtraInfo, 
-    ResponseSensitivityInfo, 
-    SensitivityLabelInfo, 
-    ThoughtStep
-)
+from approaches.approach import DataPoints, ExtraInfo, ThoughtStep
 from approaches.chatapproach import ChatApproach
 from approaches.promptmanager import PromptManager
 from core.authentication import AuthenticationHelper
@@ -204,11 +196,10 @@ class ChatReadRetrieveReadApproach(ChatApproach):
         try:
             sensitivity_info = await self.process_sensitivity_labels(results, auth_claims)
         except Exception as e:
-            logging.getLogger(__name__).warning(f"Failed to process sensitivity labels: {e}")
             sensitivity_info = None
 
         extra_info = ExtraInfo(
-            data_points=DataPoints(text=text_sources),
+            DataPoints(text=text_sources),
             sensitivity=sensitivity_info,
             thoughts=[
                 self.format_thought_step_for_chatcompletion(
@@ -272,11 +263,10 @@ class ChatReadRetrieveReadApproach(ChatApproach):
         try:
             sensitivity_info = await self.process_sensitivity_labels(results, auth_claims)
         except Exception as e:
-            logging.getLogger(__name__).warning(f"Failed to process sensitivity labels: {e}")
             sensitivity_info = None
 
         extra_info = ExtraInfo(
-            data_points=DataPoints(text=text_sources),
+            DataPoints(text=text_sources),
             sensitivity=sensitivity_info,
             thoughts=[
                 ThoughtStep(
