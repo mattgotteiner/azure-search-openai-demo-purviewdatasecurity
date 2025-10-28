@@ -72,6 +72,7 @@ from config import (
     CONFIG_DEFAULT_REASONING_EFFORT,
     CONFIG_GPT4V_DEPLOYED,
     CONFIG_INGESTER,
+    CONFIG_LABEL_HELPER,
     CONFIG_LANGUAGE_PICKER_ENABLED,
     CONFIG_OPENAI_CLIENT,
     CONFIG_QUERY_REWRITING_ENABLED,
@@ -556,6 +557,12 @@ async def setup_clients():
         enable_unauthenticated_access=AZURE_ENABLE_UNAUTHENTICATED_ACCESS,
     )
 
+    # Set up shared LabelHelper for sensitivity label processing
+    current_app.logger.info("Setting up shared LabelHelper for sensitivity label processing")
+    from core.labelhelper import LabelHelper
+    label_helper = LabelHelper()
+    current_app.config[CONFIG_LABEL_HELPER] = label_helper
+
     if USE_USER_UPLOAD:
         current_app.logger.info("USE_USER_UPLOAD is true, setting up user upload feature")
         if not AZURE_USERSTORAGE_ACCOUNT or not AZURE_USERSTORAGE_CONTAINER:
@@ -707,6 +714,7 @@ async def setup_clients():
         query_speller=AZURE_SEARCH_QUERY_SPELLER,
         prompt_manager=prompt_manager,
         reasoning_effort=OPENAI_REASONING_EFFORT,
+        label_helper=label_helper,
     )
 
     # ChatReadRetrieveReadApproach is used by /chat for multi-turn conversation
@@ -730,6 +738,7 @@ async def setup_clients():
         query_speller=AZURE_SEARCH_QUERY_SPELLER,
         prompt_manager=prompt_manager,
         reasoning_effort=OPENAI_REASONING_EFFORT,
+        label_helper=label_helper,
     )
 
     if USE_GPT4V:
@@ -769,6 +778,7 @@ async def setup_clients():
             query_language=AZURE_SEARCH_QUERY_LANGUAGE,
             query_speller=AZURE_SEARCH_QUERY_SPELLER,
             prompt_manager=prompt_manager,
+            label_helper=label_helper,
         )
 
         current_app.config[CONFIG_CHAT_VISION_APPROACH] = ChatReadRetrieveReadVisionApproach(
@@ -791,6 +801,7 @@ async def setup_clients():
             query_language=AZURE_SEARCH_QUERY_LANGUAGE,
             query_speller=AZURE_SEARCH_QUERY_SPELLER,
             prompt_manager=prompt_manager,
+            label_helper=label_helper,
         )
 
 

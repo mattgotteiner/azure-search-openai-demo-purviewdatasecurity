@@ -47,6 +47,7 @@ class ChatReadRetrieveReadApproach(ChatApproach):
         query_speller: str,
         prompt_manager: PromptManager,
         reasoning_effort: Optional[str] = None,
+        label_helper: Optional[Any] = None,
     ):
         self.search_client = search_client
         self.search_index_name = search_index_name
@@ -71,6 +72,7 @@ class ChatReadRetrieveReadApproach(ChatApproach):
         self.answer_prompt = self.prompt_manager.load_prompt("chat_answer_question.prompty")
         self.reasoning_effort = reasoning_effort
         self.include_token_usage = True
+        self.label_helper = label_helper
 
     async def run_until_final_call(
         self,
