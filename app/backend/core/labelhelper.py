@@ -21,6 +21,7 @@ class LabelConfig:
     """Configuration constants for label processing"""
     # Cache settings
     CACHE_DURATION_SECONDS: int = 2 * 60 * 60  # 2 hours
+    CACHE_MAX_SIZE: int = 1000  # Maximum number of labels to cache
     
     # API settings
     API_TIMEOUT_SECONDS: float = 10.0
@@ -71,46 +72,69 @@ class LabelHelper:
         self._config = config or LabelConfig()
         self._label_cache: Dict[str, Tuple[Optional[SensitivityLabel], float]] = {}
         self._cache_duration_seconds = self._config.CACHE_DURATION_SECONDS
+        self._credential = None
     
     def _get_cached_label(self, label_id: str) -> Optional[SensitivityLabel]:
         """Retrieve a label from cache if it exists and is still valid."""
-        if label_id not in self._label_cache:
-            return None
+        try:
+            if label_id not in self._label_cache:
+                return None
+                
+            cached_label, timestamp = self._label_cache[label_id]
+            if (time.time() - timestamp) < self._cache_duration_seconds:
+                return cached_label
             
-        cached_label, timestamp = self._label_cache[label_id]
-        if (time.time() - timestamp) < self._cache_duration_seconds:
-            return cached_label
-        
-        # Remove expired entry
-        del self._label_cache[label_id]
-        return None
+            # Remove expired entry
+            del self._label_cache[label_id]
+            return None
+        except KeyError:
+            return None
     
     def _cache_label(self, label_id: str, label: Optional[SensitivityLabel]) -> None:
-        """Store a label in cache with current timestamp."""
+        """Store a label in cache with current timestamp. If cache is full, remove oldest entries"""
+        # cache eviction 
+        if len(self._label_cache) >= self._config.CACHE_MAX_SIZE:
+            # Remove expired entries first
+            now = time.time()
+            expired_keys = [
+                key for key, (_, timestamp) in self._label_cache.items()
+                if (now - timestamp) >= self._cache_duration_seconds
+            ]
+            for key in expired_keys:
+                del self._label_cache[key]
+            
+            # If still at capacity, remove oldest entry
+            if len(self._label_cache) >= self._config.CACHE_MAX_SIZE:
+                oldest_key = min(self._label_cache.items(), key=lambda x: x[1][1])[0]
+                del self._label_cache[oldest_key]
+        
         self._label_cache[label_id] = (label, time.time())
         
     async def _get_credential(self):
-        """Get Azure credential for API calls"""
-        try:
-            # Import here to avoid circular imports
-            from azure.identity.aio import AzureDeveloperCliCredential, ManagedIdentityCredential
-            
-            # Check if running on Azure (same logic as app.py)
-            RUNNING_ON_AZURE = os.getenv("WEBSITE_HOSTNAME") is not None or os.getenv("RUNNING_IN_PRODUCTION") is not None
-            AZURE_TENANT_ID = os.getenv("AZURE_TENANT_ID")
-            AZURE_CLIENT_ID = os.getenv("AZURE_CLIENT_ID")
-            
-            if RUNNING_ON_AZURE:
-                if AZURE_CLIENT_ID:
-                    return ManagedIdentityCredential(client_id=AZURE_CLIENT_ID)
+        """Get or create cached Azure credential for API calls"""
+        if self._credential is None:
+            try:
+                # Import here to avoid circular imports
+                from azure.identity.aio import AzureDeveloperCliCredential, ManagedIdentityCredential
+                
+                # Check if running on Azure (same logic as app.py)
+                RUNNING_ON_AZURE = os.getenv("WEBSITE_HOSTNAME") is not None or os.getenv("RUNNING_IN_PRODUCTION") is not None
+                AZURE_TENANT_ID = os.getenv("AZURE_TENANT_ID")
+                AZURE_CLIENT_ID = os.getenv("AZURE_CLIENT_ID")
+                
+                if RUNNING_ON_AZURE:
+                    if AZURE_CLIENT_ID:
+                        self._credential = ManagedIdentityCredential(client_id=AZURE_CLIENT_ID)
+                    else:
+                        self._credential = ManagedIdentityCredential()
+                elif AZURE_TENANT_ID:
+                    self._credential = AzureDeveloperCliCredential(tenant_id=AZURE_TENANT_ID, process_timeout=self._config.CREDENTIAL_TIMEOUT_SECONDS)
                 else:
-                    return ManagedIdentityCredential()
-            elif AZURE_TENANT_ID:
-                return AzureDeveloperCliCredential(tenant_id=AZURE_TENANT_ID, process_timeout=self._config.CREDENTIAL_TIMEOUT_SECONDS)
-            else:
-                return AzureDeveloperCliCredential(process_timeout=self._config.CREDENTIAL_TIMEOUT_SECONDS)
-        except Exception as e:
-            raise LabelError(f"Failed to create Azure credential: {e}")
+                    self._credential = AzureDeveloperCliCredential(process_timeout=self._config.CREDENTIAL_TIMEOUT_SECONDS)
+            except Exception as e:
+                raise LabelError(f"Failed to create Azure credential: {e}")
+        
+        return self._credential
         
     async def _resolve_purview_label(self, label_id: str, user_access_token: Optional[str] = None) -> Optional[SensitivityLabel]:
         """
@@ -173,7 +197,6 @@ class LabelHelper:
         except Exception:
             pass
             
-        self._cache_label(label_id, None)
         return None
         
     async def extract_labels_from_search_results(self, search_results, user_access_token: Optional[str] = None) -> List[DocumentLabel]:

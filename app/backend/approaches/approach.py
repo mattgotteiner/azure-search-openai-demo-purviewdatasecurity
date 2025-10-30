@@ -163,6 +163,7 @@ class Approach(ABC):
         vision_token_provider: Callable[[], Awaitable[str]],
         prompt_manager: PromptManager,
         reasoning_effort: Optional[str] = None,
+        label_helper: Optional[Any] = None,
     ):
         self.search_client = search_client
         self.openai_client = openai_client
@@ -178,6 +179,7 @@ class Approach(ABC):
         self.vision_token_provider = vision_token_provider
         self.prompt_manager = prompt_manager
         self.reasoning_effort = reasoning_effort
+        self.label_helper = label_helper
         self.include_token_usage = True
 
     def build_filter(self, overrides: dict[str, Any], auth_claims: dict[str, Any]) -> Optional[str]:
@@ -504,13 +506,14 @@ class Approach(ABC):
     async def process_sensitivity_labels(self, results, auth_claims: dict[str, Any]) -> Optional["ResponseSensitivity"]:
         """Process sensitivity labels from search results and compute response sensitivity."""
         try:
-            # Import here to avoid circular imports
-            from core.labelhelper import LabelHelper
+            label_helper = self.label_helper
+            if not label_helper:
+                from core.labelhelper import LabelHelper
+                label_helper = LabelHelper()
             
             # Extract user's Graph access token for delegated label resolution
             user_graph_token = auth_claims.get("graph_access_token")
 
-            label_helper = LabelHelper()
             document_labels = await label_helper.extract_labels_from_search_results(results, user_graph_token)
             
             if not document_labels:
