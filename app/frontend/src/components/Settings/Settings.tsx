@@ -47,7 +47,6 @@ export interface SettingsProps {
     promptTemplatePrefix?: string;
     promptTemplateSuffix?: string;
     showSuggestFollowupQuestions?: boolean;
-    showAgenticRetrievalOption: boolean;
     useAgenticRetrieval: boolean;
 }
 
@@ -88,7 +87,6 @@ export const Settings = ({
     promptTemplatePrefix,
     promptTemplateSuffix,
     showSuggestFollowupQuestions,
-    showAgenticRetrievalOption,
     useAgenticRetrieval
 }: SettingsProps) => {
     const { t } = useTranslation();
@@ -173,17 +171,6 @@ export const Settings = ({
                 onRenderLabel={props => renderLabel(props, seedId, seedFieldId, t("helpTexts.seed"))}
             />
 
-            {showAgenticRetrievalOption && (
-                <Checkbox
-                    id={agenticRetrievalFieldId}
-                    className={styles.settingsSeparator}
-                    checked={useAgenticRetrieval}
-                    label={t("labels.useAgenticRetrieval")}
-                    onChange={(_ev, checked) => onChange("useAgenticRetrieval", !!checked)}
-                    aria-labelledby={agenticRetrievalId}
-                    onRenderLabel={props => renderLabel(props, agenticRetrievalId, agenticRetrievalFieldId, t("helpTexts.suggestFollowupQuestions"))}
-                />
-            )}
             {!useAgenticRetrieval && !useGPT4V && (
                 <TextField
                     id={searchScoreFieldId}
@@ -215,7 +202,7 @@ export const Settings = ({
                 />
             )}
 
-            {showAgenticRetrievalOption && useAgenticRetrieval && (
+            {useAgenticRetrieval && (
                 <TextField
                     id={maxSubqueryCountFieldId}
                     className={styles.settingsSeparator}
@@ -230,7 +217,7 @@ export const Settings = ({
                 />
             )}
 
-            {showAgenticRetrievalOption && useAgenticRetrieval && (
+            {useAgenticRetrieval && (
                 <Dropdown
                     id={resultsMergeStrategyFieldId}
                     className={styles.settingsSeparator}

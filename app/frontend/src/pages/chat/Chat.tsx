@@ -92,7 +92,6 @@ const Chat = () => {
     const [showSpeechOutputAzure, setShowSpeechOutputAzure] = useState<boolean>(false);
     const [showChatHistoryBrowser, setShowChatHistoryBrowser] = useState<boolean>(false);
     const [showChatHistoryCosmos, setShowChatHistoryCosmos] = useState<boolean>(false);
-    const [showAgenticRetrievalOption, setShowAgenticRetrievalOption] = useState<boolean>(false);
     const [useAgenticRetrieval, setUseAgenticRetrieval] = useState<boolean>(false);
 
     const audio = useRef(new Audio()).current;
@@ -135,11 +134,6 @@ const Chat = () => {
             setShowSpeechOutputAzure(config.showSpeechOutputAzure);
             setShowChatHistoryBrowser(config.showChatHistoryBrowser);
             setShowChatHistoryCosmos(config.showChatHistoryCosmos);
-            setShowAgenticRetrievalOption(config.showAgenticRetrievalOption);
-            setUseAgenticRetrieval(config.showAgenticRetrievalOption);
-            if (config.showAgenticRetrievalOption) {
-                setRetrieveCount(10);
-            }
         });
     };
 
@@ -200,9 +194,14 @@ const Chat = () => {
         lastQuestionRef.current = question;
 
         error && setError(undefined);
-        setIsLoading(true);
         setActiveCitation(undefined);
         setActiveAnalysisPanelTab(undefined);
+
+        // Set loading state immediately to ensure user message is displayed during async operations
+        setIsLoading(true);
+
+        // Use setTimeout to ensure React state update is processed and UI renders before async operations
+        await new Promise(resolve => setTimeout(resolve, 0));
 
         const token = client ? await getToken(client) : undefined;
         const graphToken = client ? await getGraphToken(client) : undefined;
@@ -218,7 +217,6 @@ const Chat = () => {
                 { content: a[0], role: "user" },
                 { content: a[1].message.content, role: "assistant" }
             ]);
-
             const request: ChatAppRequest = {
                 messages: [...messages, { content: question, role: "user" }],
                 context: {
@@ -263,11 +261,7 @@ const Chat = () => {
 
                 try {
                     if (graphToken) {
-                        const p4aiResponse = await sendToPurview(graphToken, lastMessage, "prompt", convid, nextSeq);
-
-                        if (!p4aiResponse.ok) {
-                            throw new Error(`Sending to Purview failed with status ${p4aiResponse.status}: ${await p4aiResponse.text()}`);
-                        }
+                        await sendToPurview(graphToken, lastMessage, "prompt", convid, nextSeq);
                     }
                 } catch (error: any) {
                     if (error.code === "PURVIEW_POLICY_BLOCK") {
@@ -285,14 +279,14 @@ const Chat = () => {
                             session_state: null
                         };
 
-                        setAnswers(prev => [...prev, [question, blockedMessage]]);
-
+                        setAnswers([...answers, [question, blockedMessage]]);
+                        setIsLoading(false);
                         return;
                     }
 
                     // Generic error handler
                     console.error("Error during sendToPurview:", error);
-                    throw error;
+                    // Don't throw - let the request continue
                 }
             } else {
                 console.warn("No messages found in the request. Skipping sendToPurview.");
@@ -311,14 +305,18 @@ const Chat = () => {
                 var nextSeq = storedSeq ? parseInt(storedSeq) + 1 : 1;
                 sessionStorage.setItem("sequenceNumber", nextSeq.toString());
 
+                // Set answers immediately so the response is visible before Purview call
+                setAnswers([...answers, [question, parsedResponse]]);
+
                 console.log("Sending response to purview");
                 if (graphToken) {
-                    const p4aiResponse = await sendToPurview(graphToken, parsedResponse.message.content, "response", convid, nextSeq);
-                    if (!p4aiResponse.ok) {
-                        throw new Error(`Sending to Purview failed with status ${p4aiResponse.status}: ${await p4aiResponse.text()}`);
+                    try {
+                        await sendToPurview(graphToken, parsedResponse.message.content, "response", convid, nextSeq);
+                    } catch (error) {
+                        console.error("Error sending response to Purview:", error);
+                        // Continue with displaying the answer even if Purview call fails
                     }
                 }
-                setAnswers([...answers, [question, parsedResponse]]);
                 if (typeof parsedResponse.session_state === "string" && parsedResponse.session_state !== "") {
                     const token = client ? await getToken(client) : undefined;
                     historyManager.addItem(parsedResponse.session_state, [...answers, [question, parsedResponse]], token);
@@ -332,14 +330,18 @@ const Chat = () => {
                 var nextSeq = storedSeq ? parseInt(storedSeq) + 1 : 1;
                 sessionStorage.setItem("sequenceNumber", nextSeq.toString());
 
+                // Set answers immediately so the response is visible before Purview call
+                setAnswers([...answers, [question, parsedResponse as ChatAppResponse]]);
+
                 console.log("Sending response to purview");
                 if (graphToken) {
-                    const p4aiResponse = await sendToPurview(graphToken, parsedResponse.message.content, "response", convid, nextSeq);
-                    if (!p4aiResponse.ok) {
-                        throw new Error(`Sending to Purview failed with status ${p4aiResponse.status}: ${await p4aiResponse.text()}`);
+                    try {
+                        await sendToPurview(graphToken, parsedResponse.message.content, "response", convid, nextSeq);
+                    } catch (error) {
+                        console.error("Error sending response to Purview:", error);
+                        // Continue with displaying the answer even if Purview call fails
                     }
                 }
-                setAnswers([...answers, [question, parsedResponse as ChatAppResponse]]);
                 if (typeof parsedResponse.session_state === "string" && parsedResponse.session_state !== "") {
                     const token = client ? await getToken(client) : undefined;
                     historyManager.addItem(parsedResponse.session_state, [...answers, [question, parsedResponse as ChatAppResponse]], token);
@@ -647,7 +649,6 @@ const Chat = () => {
                         streamingEnabled={streamingEnabled}
                         useSuggestFollowupQuestions={useSuggestFollowupQuestions}
                         showSuggestFollowupQuestions={true}
-                        showAgenticRetrievalOption={showAgenticRetrievalOption}
                         useAgenticRetrieval={useAgenticRetrieval}
                         onChange={handleSettingsChange}
                     />

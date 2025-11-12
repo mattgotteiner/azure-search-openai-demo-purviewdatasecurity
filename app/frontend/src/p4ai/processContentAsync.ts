@@ -10,6 +10,7 @@ export async function processContentAsync(
     scopeIdentifier: string
 ): Promise<Response> {
     const processContentPayload = {
+        scopeIdentifier: scopeIdentifier,
         contentToProcess: {
             contentEntries: [
                 {

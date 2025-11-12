@@ -74,18 +74,32 @@ export async function sendToPurview(
     const cachedEtag = localStorage.getItem("purview:etag");
     const cachedScope = localStorage.getItem("purview:scope");
     const scopeState = sessionStorage.getItem("scopeState");
-    console.log("Scope state:", scopeState);
     let scopeIdentifier: string | undefined = undefined;
     let etag: string | undefined = undefined;
     let notModified: boolean = false;
 
-    if (scopeState == "modified" || scopeState == null) {
-        const { scopeIdentifier, etag, notModified } = await getProtectionScope(p4aiToken, userId, cachedEtag || undefined);
+    // If scope state is null/undefined OR modified, OR we don't have a cached scope, fetch a new one
+    if (scopeState === "modified" || scopeState === null || !cachedScope) {
+        const scopeResult = await getProtectionScope(p4aiToken, userId, cachedEtag || undefined);
+        scopeIdentifier = scopeResult.scopeIdentifier;
+        etag = scopeResult.etag;
+        notModified = scopeResult.notModified;
     } else {
         notModified = true;
     }
 
-    const finalScopeIdentifier = notModified ? cachedScope! : scopeIdentifier!;
+    const finalScopeIdentifier = notModified && cachedScope ? cachedScope : scopeIdentifier!;
+
+    if (!finalScopeIdentifier) {
+        throw new Error(
+            "Unable to determine protection scope identifier. notModified=" +
+                notModified +
+                ", cachedScope=" +
+                cachedScope +
+                ", scopeIdentifier=" +
+                scopeIdentifier
+        );
+    }
 
     if (!notModified && etag && scopeIdentifier) {
         localStorage.setItem("purview:etag", etag);

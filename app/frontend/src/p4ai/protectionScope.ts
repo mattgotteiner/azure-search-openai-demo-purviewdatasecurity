@@ -57,6 +57,11 @@ export async function getProtectionScope(accessToken: string, userId: string, pr
         sessionStorage.setItem(activity, mode);
     }
 
+    if (!responseBody.scopeIdentifier) {
+        console.error("No scopeIdentifier in response body:", responseBody);
+        throw new Error("Protection scope API did not return a scopeIdentifier");
+    }
+
     return {
         scopeIdentifier: responseBody.scopeIdentifier,
         etag,
