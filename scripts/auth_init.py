@@ -158,11 +158,14 @@ def client_app(server_app_id: str, server_app: Application, identifier: int) -> 
                     )
                 ],
             ),
-            # Graph User.Read
+            # Microsoft Graph API scopes
             RequiredResourceAccess(
                 resource_app_id="00000003-0000-0000-c000-000000000000",
                 resource_access=[
+                    # Graph User.Read
                     ResourceAccess(id=uuid.UUID("e1fe6dd8-ba31-4d61-89e7-88639da4683d"), type="Scope"),
+                    # Purview Content.Process.User - for data security and governance
+                    ResourceAccess(id=uuid.UUID("1d787a13-f750-4ad6-875a-fcbd2725596b"), type="Scope"),
                 ],
             ),
         ],

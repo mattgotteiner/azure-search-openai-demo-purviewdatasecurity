@@ -1,8 +1,6 @@
 // Refactored from https://github.com/Azure-Samples/ms-identity-javascript-react-tutorial/blob/main/1-Authentication/1-sign-in/SPA/src/authConfig.js
 
 import { AuthenticationResult, InteractionRequiredAuthError, IPublicClientApplication, PublicClientApplication } from "@azure/msal-browser";
-import { to } from "@react-spring/web";
-import { config } from "./p4ai/config";
 
 const appServicesAuthTokenUrl = ".auth/me";
 const appServicesAuthTokenRefreshUrl = ".auth/refresh";
@@ -213,6 +211,39 @@ export const getToken = async (client: IPublicClientApplication): Promise<string
         });
 };
 
+// Get an access token for Microsoft Graph API (for Purview calls)
+// This token has a different audience than the backend API token
+export const getGraphToken = async (client: IPublicClientApplication): Promise<string | undefined> => {
+    const appServicesToken = await getAppServicesToken();
+    if (appServicesToken) {
+        // App Services tokens may work for Graph, but we should try to get a Graph-specific token
+        // Fall through to MSAL acquisition
+    }
+
+    const graphTokenRequest = {
+        scopes: ["https://graph.microsoft.com/Content.Process.User", "https://graph.microsoft.com/User.Read"],
+        redirectUri: getRedirectUri()
+    };
+
+    try {
+        const result = await client.acquireTokenSilent(graphTokenRequest);
+        return result.accessToken;
+    } catch (error) {
+        if (error instanceof InteractionRequiredAuthError) {
+            // If silent acquisition fails, try interactive popup
+            try {
+                const result = await client.acquireTokenPopup(graphTokenRequest);
+                return result.accessToken;
+            } catch (popupError) {
+                console.error("Failed to acquire Graph token:", popupError);
+                return undefined;
+            }
+        }
+        console.error("Error acquiring Graph token:", error);
+        return undefined;
+    }
+};
+
 /**
  * Retrieves the username of the active account.
  * If no active account is found, attempts to retrieve the username from the app services login token if available.
@@ -231,91 +262,6 @@ export const getUsername = async (client: IPublicClientApplication): Promise<str
     }
 
     return null;
-};
-
-const CLIENT_ID = config.CLIENT_ID;
-const AUTHORITY = config.AUTHORITY;
-
-const msalConfigp4Ai = {
-    auth: {
-        clientId: CLIENT_ID,
-        authority: `${AUTHORITY}`,
-        redirectUri: window.location.origin || "http://localhost:3000", // Default redirect URI
-        clientCapabilities: ["cp1"]
-    },
-    cache: {
-        cacheLocation: "sessionStorage", // ✅ Use session storage for security
-        storeAuthStateInCookie: false // ✅ Set to `true` if facing browser issues
-    }
-};
-
-const msalInstanceP4Ai = new PublicClientApplication(msalConfigp4Ai);
-
-(async () => {
-    await msalInstanceP4Ai.initialize();
-})();
-
-export { msalInstanceP4Ai, msalConfigp4Ai };
-
-export interface P4AiAuthSetup {
-    name: string;
-    token: string;
-}
-
-export const getTokenForP4Ai = async (scopes: string[]): Promise<P4AiAuthSetup | undefined> => {
-    try {
-        let activeAccount = msalInstanceP4Ai.getActiveAccount();
-
-        if (!activeAccount) {
-            console.warn(" No active account found. Attempting interactive login...");
-            const loginResponse = await msalInstanceP4Ai.loginPopup({
-                scopes,
-                redirectUri: window.location.origin
-            });
-
-            activeAccount = loginResponse.account;
-            if (activeAccount) {
-                msalInstanceP4Ai.setActiveAccount(activeAccount);
-            }
-        }
-
-        const tokenResponse: AuthenticationResult = await msalInstanceP4Ai.acquireTokenSilent({
-            scopes,
-            redirectUri: window.location.origin
-        });
-
-        const response: P4AiAuthSetup = {
-            name: activeAccount?.name || "Unknown User",
-            token: tokenResponse.accessToken
-        };
-
-        return response;
-    } catch (error) {
-        try {
-            const interactiveResponse: AuthenticationResult = await msalInstanceP4Ai.acquireTokenPopup({
-                scopes,
-                redirectUri: window.location.origin
-            });
-
-            return {
-                name: interactiveResponse.account?.name || "Unknown User",
-                token: interactiveResponse.accessToken
-            };
-        } catch (interactiveError) {
-            return undefined;
-        }
-    }
-};
-
-export const logoutP4Ai = async (): Promise<void> => {
-    try {
-        await msalInstanceP4Ai.logoutPopup({
-            postLogoutRedirectUri: window.location.origin
-        });
-    } catch (error) {
-        console.error("Error during P4Ai logout:", error);
-    }
-    msalInstanceP4Ai.setActiveAccount(null);
 };
 
 /**

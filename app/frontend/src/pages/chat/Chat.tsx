@@ -31,13 +31,12 @@ import { HistoryButton } from "../../components/HistoryButton";
 import { SettingsButton } from "../../components/SettingsButton";
 import { ClearChatButton } from "../../components/ClearChatButton";
 import { UploadFile } from "../../components/UploadFile";
-import { useLogin, getToken, requireAccessControl } from "../../authConfig";
+import { useLogin, getToken, getGraphToken, requireAccessControl } from "../../authConfig";
 import { useMsal } from "@azure/msal-react";
 import { TokenClaimsDisplay } from "../../components/TokenClaimsDisplay";
 import { LoginContext } from "../../loginContext";
 import { LanguagePicker } from "../../i18n/LanguagePicker";
 import { Settings } from "../../components/Settings/Settings";
-import { apitoken } from "../../p4ai/auth";
 
 const Chat = () => {
     const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
@@ -206,10 +205,7 @@ const Chat = () => {
         setActiveAnalysisPanelTab(undefined);
 
         const token = client ? await getToken(client) : undefined;
-
-        if (!apitoken) {
-            throw new Error("API token is not set. Please ensure you are logged in.");
-        }
+        const graphToken = client ? await getGraphToken(client) : undefined;
 
         var convid = sessionStorage.getItem("convid");
         if (!convid) {
@@ -266,10 +262,12 @@ const Chat = () => {
                 console.log("Sending prompt to purview");
 
                 try {
-                    const p4aiResponse = await sendToPurview(apitoken, lastMessage, "prompt", convid, nextSeq);
+                    if (graphToken) {
+                        const p4aiResponse = await sendToPurview(graphToken, lastMessage, "prompt", convid, nextSeq);
 
-                    if (!p4aiResponse.ok) {
-                        throw new Error(`Sending to Purview failed with status ${p4aiResponse.status}: ${await p4aiResponse.text()}`);
+                        if (!p4aiResponse.ok) {
+                            throw new Error(`Sending to Purview failed with status ${p4aiResponse.status}: ${await p4aiResponse.text()}`);
+                        }
                     }
                 } catch (error: any) {
                     if (error.code === "PURVIEW_POLICY_BLOCK") {
@@ -314,9 +312,11 @@ const Chat = () => {
                 sessionStorage.setItem("sequenceNumber", nextSeq.toString());
 
                 console.log("Sending response to purview");
-                const p4aiResponse = await sendToPurview(apitoken, parsedResponse.message.content, "response", convid, nextSeq);
-                if (!p4aiResponse.ok) {
-                    throw new Error(`Sending to Purview failed with status ${p4aiResponse.status}: ${await p4aiResponse.text()}`);
+                if (graphToken) {
+                    const p4aiResponse = await sendToPurview(graphToken, parsedResponse.message.content, "response", convid, nextSeq);
+                    if (!p4aiResponse.ok) {
+                        throw new Error(`Sending to Purview failed with status ${p4aiResponse.status}: ${await p4aiResponse.text()}`);
+                    }
                 }
                 setAnswers([...answers, [question, parsedResponse]]);
                 if (typeof parsedResponse.session_state === "string" && parsedResponse.session_state !== "") {
@@ -333,9 +333,11 @@ const Chat = () => {
                 sessionStorage.setItem("sequenceNumber", nextSeq.toString());
 
                 console.log("Sending response to purview");
-                const p4aiResponse = await sendToPurview(apitoken, parsedResponse.message.content, "response", convid, nextSeq);
-                if (!p4aiResponse.ok) {
-                    throw new Error(`Sending to Purview failed with status ${p4aiResponse.status}: ${await p4aiResponse.text()}`);
+                if (graphToken) {
+                    const p4aiResponse = await sendToPurview(graphToken, parsedResponse.message.content, "response", convid, nextSeq);
+                    if (!p4aiResponse.ok) {
+                        throw new Error(`Sending to Purview failed with status ${p4aiResponse.status}: ${await p4aiResponse.text()}`);
+                    }
                 }
                 setAnswers([...answers, [question, parsedResponse as ChatAppResponse]]);
                 if (typeof parsedResponse.session_state === "string" && parsedResponse.session_state !== "") {

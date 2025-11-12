@@ -2,8 +2,7 @@ const BACKEND_URI = "";
 
 import { ChatAppResponse, ChatAppResponseOrError, ChatAppRequest, Config, SimpleAPIResponse, HistoryListApiResponse, HistoryApiResponse } from "./models";
 import { useLogin, getToken, isUsingAppServicesLogin } from "../authConfig";
-
-import { apitoken, getUserIdFromToken } from "../p4ai/auth";
+import { getUserIdFromToken } from "../p4ai/auth";
 import { getProtectionScope } from "../p4ai/protectionScope";
 import { processContent } from "../p4ai/processContent";
 import { processContentAsync } from "../p4ai/processContentAsync";
