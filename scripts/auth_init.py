@@ -164,6 +164,8 @@ def client_app(server_app_id: str, server_app: Application, identifier: int) -> 
                 resource_access=[
                     # Graph User.Read
                     ResourceAccess(id=uuid.UUID("e1fe6dd8-ba31-4d61-89e7-88639da4683d"), type="Scope"),
+                    # Purview ProtectionScopes.Compute.User - for computing protection scopes
+                    ResourceAccess(id=uuid.UUID("4fc04d16-a9fc-4c5e-8da4-79b6c33638a4"), type="Scope"),
                     # Purview Content.Process.User - for data security and governance
                     ResourceAccess(id=uuid.UUID("1d787a13-f750-4ad6-875a-fcbd2725596b"), type="Scope"),
                 ],

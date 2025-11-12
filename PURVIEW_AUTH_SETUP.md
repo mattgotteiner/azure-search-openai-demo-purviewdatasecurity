@@ -12,12 +12,14 @@ The application now uses a unified authentication mechanism where the original M
 
 The following scope is required for Purview data security and governance functionality:
 
-1. **Content.Process.User** (UUID: `1d787a13-f750-4ad6-875a-fcbd2725596b`) - This delegated permission allows the app to process and evaluate content for data security, governance, and compliance outcomes for a user. This permission provides access to:
+1. **ProtectionScopes.Compute.User** (UUID: `4fc04d16-a9fc-4c5e-8da4-79b6c33638a4`) - This delegated permission allows the app to identify Purview data protection, compliance and governance policy scopes defined for an individual user. This permission provides access to:
    - Computing protection scopes (`/me/dataSecurityAndGovernance/protectionScopes/compute`)
-   - Processing content through Purview DLP policies
+
+2. **Content.Process.User** (UUID: `1d787a13-f750-4ad6-875a-fcbd2725596b`) - This delegated permission allows the app to process and evaluate content for data security, governance, and compliance outcomes for a user. This permission provides access to:
+   - Processing content through Purview DLP policies (`/me/dataSecurityAndGovernance/processContent`)
    - Writing content activity logs for audit and compliance
 
-**Note**: The previous scope names (`ProtectionScopes.Compute.User`, `SensitivityLabel.Read`, `ContentActivity.Write`) are not actual Microsoft Graph permission names. Microsoft Purview data security features are accessed through the single `Content.Process.User` scope.
+Both permissions are required for the complete Purview integration.
 
 ## Setup Steps
 

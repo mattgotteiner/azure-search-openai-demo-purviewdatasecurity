@@ -221,7 +221,11 @@ export const getGraphToken = async (client: IPublicClientApplication): Promise<s
     }
 
     const graphTokenRequest = {
-        scopes: ["https://graph.microsoft.com/Content.Process.User", "https://graph.microsoft.com/User.Read"],
+        scopes: [
+            "https://graph.microsoft.com/ProtectionScopes.Compute.User",
+            "https://graph.microsoft.com/Content.Process.User",
+            "https://graph.microsoft.com/User.Read"
+        ],
         redirectUri: getRedirectUri()
     };
 

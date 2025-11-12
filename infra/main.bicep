@@ -21,9 +21,6 @@ param searchServiceName string = '' // Set in main.parameters.json
 param searchServiceResourceGroupName string = '' // Set in main.parameters.json
 param searchServiceLocation string = '' // Set in main.parameters.json
 
-@description('The Azure AD Application (Client) ID for your app.')
-param clientId string
-
 // The free tier does not support managed identity (required) or semantic search (optional)
 @allowed(['free', 'basic', 'standard', 'standard2', 'standard3', 'storage_optimized_l1', 'storage_optimized_l2'])
 param searchServiceSkuName string // Set in main.parameters.json
@@ -475,7 +472,7 @@ var appEnvVariables = {
   USE_MEDIA_DESCRIBER_AZURE_CU: useMediaDescriberAzureCU
   AZURE_CONTENTUNDERSTANDING_ENDPOINT: useMediaDescriberAzureCU ? contentUnderstanding.outputs.endpoint : ''
   RUNNING_IN_PRODUCTION: 'true'
-  VITE_CLIENT_ID: clientId
+  VITE_CLIENT_ID: clientAppId
 }
 
 // App Service for the web application (Python Quart app with JS frontend)
@@ -1352,7 +1349,7 @@ output AZURE_USERSTORAGE_RESOURCE_GROUP string = storageResourceGroup.name
 output AZURE_AI_PROJECT string = useAiProject ? ai.outputs.projectName : ''
 
 output AZURE_USE_AUTHENTICATION bool = useAuthentication
-output VITE_CLIENT_ID string = clientId
+output VITE_CLIENT_ID string = clientAppId
 
 output BACKEND_URI string = deploymentTarget == 'appservice' ? backend.outputs.uri : acaBackend.outputs.uri
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = deploymentTarget == 'containerapps'

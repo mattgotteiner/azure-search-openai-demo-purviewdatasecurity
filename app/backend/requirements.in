@@ -1,3 +1,4 @@
+--extra-index-url https://pkgs.dev.azure.com/azure-sdk/public/_packaging/azure-sdk-for-python/pypi/simple/
 azure-identity
 quart
 quart-cors
@@ -7,7 +8,7 @@ tenacity
 azure-ai-documentintelligence==1.0.0b4
 azure-cognitiveservices-speech
 azure-cosmos
-azure-search-documents==11.6.0b12
+azure-search-documents==11.7.0a20251107005
 azure-storage-blob
 azure-storage-file-datalake
 uvicorn
