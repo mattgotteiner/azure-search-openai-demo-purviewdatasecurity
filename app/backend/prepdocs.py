@@ -314,8 +314,14 @@ if __name__ == "__main__":
         exit(0)
 
     use_int_vectorization = os.getenv("USE_FEATURE_INT_VECTORIZATION", "").lower() == "true"
+    if not use_int_vectorization:
+        logger.info("Integrated vectorization strategy is disabled. It's required for this demo")
+        exit(0)
     use_gptvision = os.getenv("USE_GPT4V", "").lower() == "true"
     use_acls = os.getenv("AZURE_ENFORCE_ACCESS_CONTROL") is not None
+    if not use_acls:
+        logger.info("Enforce access control is disabled. It's required for this demo")
+        exit(0)
     dont_use_vectors = os.getenv("USE_VECTORS", "").lower() == "false"
     use_content_understanding = os.getenv("USE_MEDIA_DESCRIBER_AZURE_CU", "").lower() == "true"
 

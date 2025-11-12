@@ -18,6 +18,7 @@ from azure.search.documents.indexes.models import (
     SearchIndexerIndexProjectionsParameters,
     SearchIndexerSkillset,
     SplitSkill,
+    IndexerPermissionOption
 )
 
 from .blobmanager import BlobManager
@@ -108,6 +109,7 @@ class IntegratedVectorizerStrategy(Strategy):
                         InputFieldMappingEntry(name="sourcepage", source="/document/metadata_storage_name"),
                         InputFieldMappingEntry(name="sourcefile", source="/document/metadata_storage_name"),
                         InputFieldMappingEntry(name="storageUrl", source="/document/metadata_storage_path"),
+                        InputFieldMappingEntry(name="metadata_sensitivity_label", source="/document/metadata_sensitivity_label"),
                         InputFieldMappingEntry(
                             name=self.search_field_name_embedding, source="/document/pages/*/vector"
                         ),
@@ -150,6 +152,7 @@ class IntegratedVectorizerStrategy(Strategy):
             connection_string=self.blob_manager.get_managedidentity_connectionstring(),
             container=ds_container,
             data_deletion_detection_policy=NativeBlobSoftDeleteDeletionDetectionPolicy(),
+            indexer_permission_options=["sensitivityLabel"]
         )
 
         await ds_client.create_or_update_data_source_connection(data_source_connection)

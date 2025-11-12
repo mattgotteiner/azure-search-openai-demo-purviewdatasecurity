@@ -223,6 +223,19 @@ class SearchManager:
                 if self.use_int_vectorization:
                     logger.info("Including parent_id field for integrated vectorization support in new index")
                     fields.append(SearchableField(name="parent_id", type="Edm.String", filterable=True))
+                    if self.use_acls:
+                        fields.append(
+                            SearchField(
+                                name="metadata_sensitivity_label",
+                                type="Edm.String",
+                                searchable=True,
+                                filterable=True,
+                                hidden=False,
+                                sortable=False,
+                                facetable=False,
+                                sensitivity_label=True
+                            )
+                        )
 
                 vectorizers: list[VectorSearchVectorizer] = []
                 vector_search_profiles = []
@@ -254,6 +267,7 @@ class SearchManager:
                 index = SearchIndex(
                     name=self.search_info.index_name,
                     fields=fields,
+                    purview_enabled=self.use_int_vectorization and self.use_acls,
                     semantic_search=SemanticSearch(
                         default_configuration_name="default",
                         configurations=[
