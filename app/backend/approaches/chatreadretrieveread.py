@@ -178,20 +178,14 @@ class ChatReadRetrieveReadApproach(ChatApproach):
             minimum_search_score,
             minimum_reranker_score,
             use_query_rewriting,
+            access_token=auth_claims.get("access_token") if self.auth_helper.use_authentication else None,
         )
 
         # STEP 3: Generate a contextual and content specific answer using the search results and chat history
         text_sources = self.get_sources_content(results, use_semantic_captions, use_image_citation=False)
-        
-        # Process sensitivity labels from search results
-        try:
-            sensitivity_info = await self.process_sensitivity_labels(results, auth_claims)
-        except Exception as e:
-            sensitivity_info = None
 
         extra_info = ExtraInfo(
             DataPoints(text=text_sources),
-            sensitivity=sensitivity_info,
             thoughts=[
                 self.format_thought_step_for_chatcompletion(
                     title="Prompt to generate search query",

@@ -145,19 +145,13 @@ class RetrieveThenReadApproach(Approach):
             minimum_search_score,
             minimum_reranker_score,
             use_query_rewriting,
+            access_token=auth_claims.get("access_token") if self.auth_helper.use_authentication else None,
         )
 
         text_sources = self.get_sources_content(results, use_semantic_captions, use_image_citation=False)
-        
-        # Process sensitivity labels from search results
-        try:
-            sensitivity_info = await self.process_sensitivity_labels(results, auth_claims)
-        except Exception as e:
-            sensitivity_info = None
 
         return ExtraInfo(
             data_points=DataPoints(text=text_sources),
-            sensitivity=sensitivity_info,
             thoughts=[
                 ThoughtStep(
                     "Search using user query",
