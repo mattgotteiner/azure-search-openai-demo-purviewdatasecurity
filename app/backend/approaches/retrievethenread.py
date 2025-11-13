@@ -150,8 +150,10 @@ class RetrieveThenReadApproach(Approach):
 
         text_sources = self.get_sources_content(results, use_semantic_captions, use_image_citation=False)
 
+        sensitivity = await self.process_sensitivity_labels(results, auth_claims)
+
         return ExtraInfo(
-            data_points=DataPoints(text=text_sources),
+            data_points=DataPoints(text=text_sources, sensitivity=sensitivity),
             thoughts=[
                 ThoughtStep(
                     "Search using user query",
@@ -171,4 +173,5 @@ class RetrieveThenReadApproach(Approach):
                     [result.serialize_for_results() for result in results],
                 ),
             ],
+            sensitivity=sensitivity,
         )

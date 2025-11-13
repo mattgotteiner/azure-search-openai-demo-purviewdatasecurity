@@ -47,6 +47,7 @@ class ChatReadRetrieveReadVisionApproach(ChatApproach):
         vision_endpoint: str,
         vision_token_provider: Callable[[], Awaitable[str]],
         prompt_manager: PromptManager,
+        label_helper: Optional[Any] = None,
     ):
         self.search_client = search_client
         self.blob_container_client = blob_container_client
@@ -72,6 +73,7 @@ class ChatReadRetrieveReadVisionApproach(ChatApproach):
         self.answer_prompt = self.prompt_manager.load_prompt("chat_answer_question_vision.prompty")
         # Currently disabled due to issues with rendering token usage in the UI
         self.include_token_usage = False
+        self.label_helper = label_helper
 
     async def run_until_final_call(
         self,
@@ -154,6 +156,8 @@ class ChatReadRetrieveReadVisionApproach(ChatApproach):
                 if url:
                     image_sources.append(url)
 
+        sensitivity = await self.process_sensitivity_labels(results, auth_claims)
+
         messages = self.prompt_manager.render_prompt(
             self.answer_prompt,
             self.get_system_prompt_variables(overrides.get("prompt_template"))
@@ -167,7 +171,7 @@ class ChatReadRetrieveReadVisionApproach(ChatApproach):
         )
 
         extra_info = ExtraInfo(
-            DataPoints(text=text_sources, images=image_sources),
+            DataPoints(text=text_sources, images=image_sources, sensitivity=sensitivity),
             [
                 ThoughtStep(
                     "Prompt to generate search query",
@@ -205,6 +209,7 @@ class ChatReadRetrieveReadVisionApproach(ChatApproach):
                     ),
                 ),
             ],
+            sensitivity=sensitivity,
         )
 
         chat_coroutine = cast(

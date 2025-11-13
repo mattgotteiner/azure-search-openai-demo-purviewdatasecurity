@@ -41,6 +41,7 @@ class RetrieveThenReadVisionApproach(Approach):
         vision_endpoint: str,
         vision_token_provider: Callable[[], Awaitable[str]],
         prompt_manager: PromptManager,
+        label_helper: Optional[Any] = None,
     ):
         self.search_client = search_client
         self.blob_container_client = blob_container_client
@@ -62,6 +63,7 @@ class RetrieveThenReadVisionApproach(Approach):
         self.answer_prompt = self.prompt_manager.load_prompt("ask_answer_question_vision.prompty")
         # Currently disabled due to issues with rendering token usage in the UI
         self.include_token_usage = False
+        self.label_helper = label_helper
 
     async def run(
         self,
@@ -123,6 +125,8 @@ class RetrieveThenReadVisionApproach(Approach):
                 if url:
                     image_sources.append(url)
 
+        sensitivity = await self.process_sensitivity_labels(results, auth_claims)
+
         messages = self.prompt_manager.render_prompt(
             self.answer_prompt,
             self.get_system_prompt_variables(overrides.get("prompt_template"))
@@ -139,7 +143,7 @@ class RetrieveThenReadVisionApproach(Approach):
         )
 
         extra_info = ExtraInfo(
-            DataPoints(text=text_sources, images=image_sources),
+            DataPoints(text=text_sources, images=image_sources, sensitivity=sensitivity),
             [
                 ThoughtStep(
                     "Search using user query",
@@ -169,6 +173,7 @@ class RetrieveThenReadVisionApproach(Approach):
                     ),
                 ),
             ],
+            sensitivity=sensitivity,
         )
 
         return {

@@ -187,7 +187,16 @@ class AuthenticationHelper:
             if "error" in search_access_token:
                 raise AuthError(error=str(search_access_token), status_code=401)
 
-            auth_claims = { "access_token": search_access_token["access_token"] }
+            auth_claims = {"access_token": search_access_token["access_token"]}
+
+            graph_access_token = self.confidential_client.acquire_token_on_behalf_of(
+                user_assertion=auth_token, scopes=["https://graph.microsoft.com/.default"]
+            )
+            if "error" in graph_access_token:
+                raise AuthError(error=str(graph_access_token), status_code=401)
+
+            auth_claims["graph_access_token"] = graph_access_token["access_token"]
+
             return auth_claims
         except AuthError as e:
             logging.exception("Exception getting authorization information - " + json.dumps(e.error))

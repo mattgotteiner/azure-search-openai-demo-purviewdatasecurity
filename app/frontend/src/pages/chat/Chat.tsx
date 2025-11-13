@@ -17,8 +17,7 @@ import {
     ResponseMessage,
     VectorFields,
     GPT4VInput,
-    SpeechConfig,
-    sendToPurview
+    SpeechConfig
 } from "../../api";
 import { Answer, AnswerError, AnswerLoading } from "../../components/Answer";
 import { QuestionInput } from "../../components/QuestionInput";
@@ -31,7 +30,7 @@ import { HistoryButton } from "../../components/HistoryButton";
 import { SettingsButton } from "../../components/SettingsButton";
 import { ClearChatButton } from "../../components/ClearChatButton";
 import { UploadFile } from "../../components/UploadFile";
-import { useLogin, getToken, getGraphToken, requireAccessControl } from "../../authConfig";
+import { useLogin, getToken, requireAccessControl } from "../../authConfig";
 import { useMsal } from "@azure/msal-react";
 import { TokenClaimsDisplay } from "../../components/TokenClaimsDisplay";
 import { LoginContext } from "../../loginContext";
@@ -204,13 +203,6 @@ const Chat = () => {
         await new Promise(resolve => setTimeout(resolve, 0));
 
         const token = client ? await getToken(client) : undefined;
-        const graphToken = client ? await getGraphToken(client) : undefined;
-
-        var convid = sessionStorage.getItem("convid");
-        if (!convid) {
-            convid = crypto.randomUUID();
-            sessionStorage.setItem("convid", convid);
-        }
 
         try {
             const messages: ResponseMessage[] = answers.flatMap(a => [
@@ -250,48 +242,6 @@ const Chat = () => {
                 session_state: answers.length ? answers[answers.length - 1][1].session_state : null
             };
 
-            if (request.messages && request.messages.length > 0) {
-                // Get the last message from the array
-                const lastMessage = request.messages[request.messages.length - 1].content;
-                var storedSeq = sessionStorage.getItem("sequenceNumber");
-                var nextSeq = storedSeq ? parseInt(storedSeq) + 1 : 1;
-                sessionStorage.setItem("sequenceNumber", nextSeq.toString());
-
-                console.log("Sending prompt to purview");
-
-                try {
-                    if (graphToken) {
-                        await sendToPurview(graphToken, lastMessage, "prompt", convid, nextSeq);
-                    }
-                } catch (error: any) {
-                    if (error.code === "PURVIEW_POLICY_BLOCK") {
-                        // ❗Insert assistant response indicating block
-                        const blockedMessage: ChatAppResponse = {
-                            message: {
-                                role: "assistant",
-                                content: "This action has been blocked due to the security policies enforced by your organization."
-                            },
-                            delta: {
-                                role: "assistant",
-                                content: "This action has been blocked due to the security policies enforced by your organization."
-                            },
-                            context: { data_points: [], followup_questions: [], thoughts: [] },
-                            session_state: null
-                        };
-
-                        setAnswers([...answers, [question, blockedMessage]]);
-                        setIsLoading(false);
-                        return;
-                    }
-
-                    // Generic error handler
-                    console.error("Error during sendToPurview:", error);
-                    // Don't throw - let the request continue
-                }
-            } else {
-                console.warn("No messages found in the request. Skipping sendToPurview.");
-            }
-
             const response = await chatApi(request, shouldStream, token);
             if (!response.body) {
                 throw Error("No response body");
@@ -301,22 +251,8 @@ const Chat = () => {
             }
             if (shouldStream) {
                 const parsedResponse: ChatAppResponse = await handleAsyncRequest(question, answers, response.body);
-                var storedSeq = sessionStorage.getItem("sequenceNumber");
-                var nextSeq = storedSeq ? parseInt(storedSeq) + 1 : 1;
-                sessionStorage.setItem("sequenceNumber", nextSeq.toString());
-
-                // Set answers immediately so the response is visible before Purview call
+                // Set answers immediately so the response is visible while streaming continues
                 setAnswers([...answers, [question, parsedResponse]]);
-
-                console.log("Sending response to purview");
-                if (graphToken) {
-                    try {
-                        await sendToPurview(graphToken, parsedResponse.message.content, "response", convid, nextSeq);
-                    } catch (error) {
-                        console.error("Error sending response to Purview:", error);
-                        // Continue with displaying the answer even if Purview call fails
-                    }
-                }
                 if (typeof parsedResponse.session_state === "string" && parsedResponse.session_state !== "") {
                     const token = client ? await getToken(client) : undefined;
                     historyManager.addItem(parsedResponse.session_state, [...answers, [question, parsedResponse]], token);
@@ -326,22 +262,8 @@ const Chat = () => {
                 if (parsedResponse.error) {
                     throw Error(parsedResponse.error);
                 }
-                var storedSeq = sessionStorage.getItem("sequenceNumber");
-                var nextSeq = storedSeq ? parseInt(storedSeq) + 1 : 1;
-                sessionStorage.setItem("sequenceNumber", nextSeq.toString());
-
-                // Set answers immediately so the response is visible before Purview call
+                // Set answers immediately so the response is visible while streaming continues
                 setAnswers([...answers, [question, parsedResponse as ChatAppResponse]]);
-
-                console.log("Sending response to purview");
-                if (graphToken) {
-                    try {
-                        await sendToPurview(graphToken, parsedResponse.message.content, "response", convid, nextSeq);
-                    } catch (error) {
-                        console.error("Error sending response to Purview:", error);
-                        // Continue with displaying the answer even if Purview call fails
-                    }
-                }
                 if (typeof parsedResponse.session_state === "string" && parsedResponse.session_state !== "") {
                     const token = client ? await getToken(client) : undefined;
                     historyManager.addItem(parsedResponse.session_state, [...answers, [question, parsedResponse as ChatAppResponse]], token);

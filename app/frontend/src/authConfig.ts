@@ -1,6 +1,6 @@
 // Refactored from https://github.com/Azure-Samples/ms-identity-javascript-react-tutorial/blob/main/1-Authentication/1-sign-in/SPA/src/authConfig.js
 
-import { AuthenticationResult, InteractionRequiredAuthError, IPublicClientApplication, PublicClientApplication } from "@azure/msal-browser";
+import { AuthenticationResult, IPublicClientApplication, PublicClientApplication } from "@azure/msal-browser";
 
 const appServicesAuthTokenUrl = ".auth/me";
 const appServicesAuthTokenRefreshUrl = ".auth/refresh";
@@ -209,43 +209,6 @@ export const getToken = async (client: IPublicClientApplication): Promise<string
             console.log(error);
             return undefined;
         });
-};
-
-// Get an access token for Microsoft Graph API (for Purview calls)
-// This token has a different audience than the backend API token
-export const getGraphToken = async (client: IPublicClientApplication): Promise<string | undefined> => {
-    const appServicesToken = await getAppServicesToken();
-    if (appServicesToken) {
-        // App Services tokens may work for Graph, but we should try to get a Graph-specific token
-        // Fall through to MSAL acquisition
-    }
-
-    const graphTokenRequest = {
-        scopes: [
-            "https://graph.microsoft.com/ProtectionScopes.Compute.User",
-            "https://graph.microsoft.com/Content.Process.User",
-            "https://graph.microsoft.com/User.Read"
-        ],
-        redirectUri: getRedirectUri()
-    };
-
-    try {
-        const result = await client.acquireTokenSilent(graphTokenRequest);
-        return result.accessToken;
-    } catch (error) {
-        if (error instanceof InteractionRequiredAuthError) {
-            // If silent acquisition fails, try interactive popup
-            try {
-                const result = await client.acquireTokenPopup(graphTokenRequest);
-                return result.accessToken;
-            } catch (popupError) {
-                console.error("Failed to acquire Graph token:", popupError);
-                return undefined;
-            }
-        }
-        console.error("Error acquiring Graph token:", error);
-        return undefined;
-    }
 };
 
 /**

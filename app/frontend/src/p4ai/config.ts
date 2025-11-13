@@ -1,4 +1,1 @@
-export const config = {
-    CLIENT_ID: import.meta.env.VITE_CLIENT_ID,
-    AUTHORITY: "https://login.microsoftonline.com/organizations"
-};
+// Deprecated: Purview-specific client configuration removed in favor of server-side handling.

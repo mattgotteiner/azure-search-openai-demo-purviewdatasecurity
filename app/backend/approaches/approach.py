@@ -431,10 +431,11 @@ class Approach(ABC):
     async def process_sensitivity_labels(self, results, auth_claims: dict[str, Any]) -> Optional["ResponseSensitivity"]:
         """Process sensitivity labels from search results and compute response sensitivity."""
         try:
-            label_helper = self.label_helper
+            label_helper = getattr(self, "label_helper", None)
             if not label_helper:
                 from core.labelhelper import LabelHelper
                 label_helper = LabelHelper()
+                setattr(self, "label_helper", label_helper)
             
             # Extract user's Graph access token for delegated label resolution
             user_graph_token = auth_claims.get("graph_access_token")

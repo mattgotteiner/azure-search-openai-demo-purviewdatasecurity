@@ -183,9 +183,10 @@ class ChatReadRetrieveReadApproach(ChatApproach):
 
         # STEP 3: Generate a contextual and content specific answer using the search results and chat history
         text_sources = self.get_sources_content(results, use_semantic_captions, use_image_citation=False)
+        sensitivity = await self.process_sensitivity_labels(results, auth_claims)
 
         extra_info = ExtraInfo(
-            DataPoints(text=text_sources),
+            DataPoints(text=text_sources, sensitivity=sensitivity),
             thoughts=[
                 self.format_thought_step_for_chatcompletion(
                     title="Prompt to generate search query",
@@ -214,5 +215,6 @@ class ChatReadRetrieveReadApproach(ChatApproach):
                     [result.serialize_for_results() for result in results],
                 ),
             ],
+            sensitivity=sensitivity,
         )
         return extra_info
