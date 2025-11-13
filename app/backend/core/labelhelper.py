@@ -9,7 +9,7 @@ import time
 from typing import Optional, List, Dict, Tuple
 from dataclasses import dataclass
 import aiohttp
-
+import logging
 
 class LabelError(Exception):
     """Base exception for label-related errors"""
@@ -110,33 +110,7 @@ class LabelHelper:
         
         self._label_cache[label_id] = (label, time.time())
         
-    async def _get_credential(self):
-        """Get or create cached Azure credential for API calls"""
-        if self._credential is None:
-            try:
-                # Import here to avoid circular imports
-                from azure.identity.aio import AzureDeveloperCliCredential, ManagedIdentityCredential
-                
-                # Check if running on Azure (same logic as app.py)
-                RUNNING_ON_AZURE = os.getenv("WEBSITE_HOSTNAME") is not None or os.getenv("RUNNING_IN_PRODUCTION") is not None
-                AZURE_TENANT_ID = os.getenv("AZURE_TENANT_ID")
-                AZURE_CLIENT_ID = os.getenv("AZURE_CLIENT_ID")
-                
-                if RUNNING_ON_AZURE:
-                    if AZURE_CLIENT_ID:
-                        self._credential = ManagedIdentityCredential(client_id=AZURE_CLIENT_ID)
-                    else:
-                        self._credential = ManagedIdentityCredential()
-                elif AZURE_TENANT_ID:
-                    self._credential = AzureDeveloperCliCredential(tenant_id=AZURE_TENANT_ID, process_timeout=self._config.CREDENTIAL_TIMEOUT_SECONDS)
-                else:
-                    self._credential = AzureDeveloperCliCredential(process_timeout=self._config.CREDENTIAL_TIMEOUT_SECONDS)
-            except Exception as e:
-                raise LabelError(f"Failed to create Azure credential: {e}")
-        
-        return self._credential
-        
-    async def _resolve_purview_label(self, label_id: str, user_access_token: Optional[str] = None) -> Optional[SensitivityLabel]:
+    async def _resolve_purview_label(self, label_id: str, access_token: Optional[str] = None) -> Optional[SensitivityLabel]:
         """
         Resolve a Purview label GUID to a SensitivityLabel using Microsoft Graph API.
         Results are cached for 2 hours to reduce API calls.
@@ -144,19 +118,8 @@ class LabelHelper:
         if cached_label := self._get_cached_label(label_id):
             return cached_label
         
+        logging.warning("Resolving label id: %s", label_id)
         try:
-            # Use user token if provided (delegated permissions), otherwise fall back to app credentials
-            if user_access_token:
-                access_token = user_access_token.removeprefix('Bearer ')
-            else:
-                credential = await self._get_credential()
-                if not credential:
-                    self._cache_label(label_id, None)
-                    return None
-                    
-                token = await credential.get_token(self._config.GRAPH_API_SCOPE)
-                access_token = token.token
-            
             # Try to get label details from Microsoft Graph API
             url = f"https://graph.microsoft.com/v1.0/security/dataSecurityAndGovernance/sensitivityLabels/{label_id}"
             
@@ -168,6 +131,7 @@ class LabelHelper:
                 }
                 
                 async with session.get(url, headers=headers, timeout=self._config.API_TIMEOUT_SECONDS) as response:
+                    logging.warning("Graph API response status: %s", response.status)
                     if response.status == 200:
                         label_data = await response.json()
                         
@@ -193,8 +157,10 @@ class LabelHelper:
                         )
                         self._cache_label(label_id, resolved_label)
                         return resolved_label
+                    logging.warning("Graph API returned: %s", await response.text())
                         
         except Exception:
+            logging.warning("Failed to resolve label: %s", label_id, exc_info=True)
             pass
             
         return None
@@ -203,11 +169,13 @@ class LabelHelper:
         """Extract sensitivity labels from search results"""
         document_labels = []
         
+        logging.warning("CALLED EXTRACT LABELS")
         for i, result in enumerate(search_results):
             doc_id = result.id or f"unknown_{i}"
             source_file = result.sourcefile or result.sourcepage or self._config.UNKNOWN_SOURCE
             metadata_sensitivity_label = result.metadata_sensitivity_label
-            
+            logging.warning("Label value: %s", metadata_sensitivity_label)
+
             if not metadata_sensitivity_label:
                 continue
             
