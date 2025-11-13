@@ -105,7 +105,7 @@ azd env set AZURE_STORAGE_RESOURCE_GROUP <your-storage-resource-group>
 
 4. **Run azd up**
 
-2. Find the client registration in the [Azure Portal](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps) (Azure Search OpenAI Chat Client App some-number), then grant admin consent
+2. Find the server registration in the [Azure Portal](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps) (Azure Search OpenAI Chat Server App some-number), then grant admin consent
 ![Screenshot](./admin_consent_screenshot.png)
 
 
