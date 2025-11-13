@@ -6,7 +6,7 @@ Handles extraction, inheritance, and display of sensitivity labels from search r
 import uuid
 import os
 import time
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, Set
 from dataclasses import dataclass
 import aiohttp
 import logging
@@ -110,13 +110,23 @@ class LabelHelper:
         
         self._label_cache[label_id] = (label, time.time())
 
-    async def _resolve_purview_label(self, label_id: str, access_token: Optional[str] = None) -> Optional[SensitivityLabel]:
+    async def _resolve_purview_label(
+        self,
+        label_id: str,
+        access_token: Optional[str] = None,
+        visited: Optional[Set[str]] = None
+    ) -> Optional[SensitivityLabel]:
         """
         Resolve a Purview label GUID to a SensitivityLabel using Microsoft Graph API.
         Results are cached for 2 hours to reduce API calls.
         """
         if cached_label := self._get_cached_label(label_id):
             return cached_label
+        visited = visited or set()
+        if label_id in visited:
+            logging.warning("Detected circular sensitivity label hierarchy for %s", label_id)
+            return None
+        visited.add(label_id)
         
         try:
             # Try to get label details from Microsoft Graph API
@@ -135,9 +145,17 @@ class LabelHelper:
                         label_data = await response.json()
                         
                         # Extract label information
-                        label_name = label_data.get('name', f'Label-{label_id[:8]}')
-                        raw_display_name = label_data.get('displayName')
-                        display_name = raw_display_name if raw_display_name else None
+                        label_name_raw = label_data.get('name') or label_data.get('displayName')
+                        label_name = label_name_raw.strip() if isinstance(label_name_raw, str) and label_name_raw.strip() else f'Label-{label_id[:8]}'
+                        raw_segment_display = label_data.get('displayName') or label_data.get('name')
+                        segment_display_name = raw_segment_display.strip() if isinstance(raw_segment_display, str) and raw_segment_display.strip() else label_name
+                        full_display_name = await self._build_full_label_display_name(
+                            label_id,
+                            label_data,
+                            segment_display_name,
+                            access_token,
+                            visited
+                        )
                         
                         # Get actual color from API response
                         api_color = label_data.get('color', self._config.DEFAULT_COLOR)
@@ -149,7 +167,7 @@ class LabelHelper:
                         resolved_label = SensitivityLabel(
                             id=label_id,
                             name=label_name,
-                            display_name=display_name,
+                            display_name=full_display_name,
                             color=api_color,
                             priority=priority,
                             icon=self._config.SUCCESS_ICON
@@ -160,6 +178,42 @@ class LabelHelper:
         except Exception:
             logging.warning("Failed to resolve label: %s", label_id, exc_info=True)
             pass
+        finally:
+            visited.discard(label_id)
+        return None
+
+    async def _build_full_label_display_name(
+        self,
+        current_label_id: str,
+        label_data: Dict,
+        segment_display_name: str,
+        access_token: Optional[str],
+        visited: Set[str]
+    ) -> str:
+        """Construct the hierarchical display name for a label by walking its parent chain."""
+        parent_id = self._extract_parent_id(label_data)
+        logging.warning("Parent ID extracted: %s", parent_id)
+
+        if not parent_id or parent_id == current_label_id:
+            return segment_display_name
+
+        parent_label = await self._resolve_purview_label(parent_id, access_token, visited)
+        if parent_label:
+            parent_display = parent_label.display_name or parent_label.name
+            if parent_display:
+                return f"{parent_display}\\{segment_display_name}"
+
+        return segment_display_name
+
+    @staticmethod
+    def _extract_parent_id(label_data: Dict) -> Optional[str]:
+        """Get the parent label id from custom settings if present."""
+        settings = label_data.get('customSettings') or []
+        for setting in settings:
+            if setting.get('name', '').lower() == 'parentid':
+                parent_id = setting.get('value')
+                if parent_id:
+                    return parent_id
         return None
         
     async def extract_labels_from_search_results(self, search_results, user_access_token: Optional[str] = None) -> List[DocumentLabel]:
