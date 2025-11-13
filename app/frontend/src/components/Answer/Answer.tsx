@@ -47,6 +47,7 @@ export const Answer = ({
     const parsedAnswer = useMemo(() => parseAnswerToHtml(answer, isStreaming, onCitationClicked), [answer]);
     const { t } = useTranslation();
     const sanitizedAnswerHtml = DOMPurify.sanitize(parsedAnswer.answerHtml);
+    const hasCitations = parsedAnswer.citations.length > 0;
     const [copied, setCopied] = useState(false);
 
     // Helper function to find the sensitivity label for a citation
@@ -113,10 +114,10 @@ export const Answer = ({
                 <div className={styles.answerText}>
                     <ReactMarkdown children={sanitizedAnswerHtml} rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]} />
                 </div>
-                {answer.context.sensitivity && <ResponseSensitivityBanner sensitivity={answer.context.sensitivity} />}
+                {hasCitations && answer.context.sensitivity && <ResponseSensitivityBanner sensitivity={answer.context.sensitivity} />}
             </Stack.Item>
 
-            {!!parsedAnswer.citations.length && (
+            {hasCitations && (
                 <Stack.Item>
                     <div>
                         <span className={styles.citationLearnMore}>{t("citationWithColon")}</span>
