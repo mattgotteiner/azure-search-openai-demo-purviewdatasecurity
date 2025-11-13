@@ -109,7 +109,7 @@ class LabelHelper:
                 del self._label_cache[oldest_key]
         
         self._label_cache[label_id] = (label, time.time())
-        
+
     async def _resolve_purview_label(self, label_id: str, access_token: Optional[str] = None) -> Optional[SensitivityLabel]:
         """
         Resolve a Purview label GUID to a SensitivityLabel using Microsoft Graph API.
@@ -162,7 +162,6 @@ class LabelHelper:
         except Exception:
             logging.warning("Failed to resolve label: %s", label_id, exc_info=True)
             pass
-            
         return None
         
     async def extract_labels_from_search_results(self, search_results, user_access_token: Optional[str] = None) -> List[DocumentLabel]:

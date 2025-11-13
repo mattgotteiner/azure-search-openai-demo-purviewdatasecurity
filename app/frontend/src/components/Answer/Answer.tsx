@@ -13,6 +13,7 @@ import { AnswerIcon } from "./AnswerIcon";
 import { SpeechOutputBrowser } from "./SpeechOutputBrowser";
 import { SpeechOutputAzure } from "./SpeechOutputAzure";
 import { ResponseSensitivityBanner } from "../ResponseSensitivityBanner";
+import { SensitivityBadge } from "../SensitivityBadge";
 
 interface Props {
     answer: ChatAppResponse;
@@ -175,15 +176,20 @@ export const Answer = ({
                             {parsedAnswer.citations.map((x, i) => {
                                 const path = getCitationFilePath(x);
                                 const labelInfo = findLabelForCitation(x);
-
-                                const displayLabel = getLabelName(labelInfo?.label);
+                                const labelDisplayName = getLabelName(labelInfo?.label);
 
                                 return (
                                     <div key={i} className={styles.citationContainer}>
                                         <a className={styles.citation} title={x} onClick={() => onCitationClicked(path)}>
                                             {`${++i}. ${x}`}
                                         </a>
-                                        {labelInfo && <span className={styles.citationLabel}>{`Original label: ${displayLabel}`}</span>}
+                                        {labelInfo?.label ? (
+                                            <div className={styles.citationLabelBadge}>
+                                                <SensitivityBadge label={labelInfo.label} size="small" />
+                                            </div>
+                                        ) : labelInfo ? (
+                                            <span className={styles.citationLabelFallback}>{labelDisplayName}</span>
+                                        ) : null}
                                     </div>
                                 );
                             })}

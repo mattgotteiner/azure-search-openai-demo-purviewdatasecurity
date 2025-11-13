@@ -55,15 +55,17 @@ h2 {
     padding: 4px 0;
 }
 
-.citationLabel {
+.citationLabelBadge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 8px;
+}
+
+.citationLabelFallback {
+    margin-left: 8px;
     font-size: 0.75rem;
     font-weight: 500;
-    padding: 2px 6px;
-    background: #f0f0f0;
-    color: #666;
-    border-radius: 4px;
-    border: 1px solid #ddd;
-    margin-left: 8px;
+    color: #605e5c;
 }
 
 .citation {
