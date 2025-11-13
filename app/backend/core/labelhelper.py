@@ -118,7 +118,6 @@ class LabelHelper:
         if cached_label := self._get_cached_label(label_id):
             return cached_label
         
-        logging.warning("Resolving label id: %s", label_id)
         try:
             # Try to get label details from Microsoft Graph API
             url = f"https://graph.microsoft.com/v1.0/security/dataSecurityAndGovernance/sensitivityLabels/{label_id}"
@@ -157,7 +156,6 @@ class LabelHelper:
                         )
                         self._cache_label(label_id, resolved_label)
                         return resolved_label
-                    logging.warning("Graph API returned: %s", await response.text())
                         
         except Exception:
             logging.warning("Failed to resolve label: %s", label_id, exc_info=True)
@@ -168,12 +166,10 @@ class LabelHelper:
         """Extract sensitivity labels from search results"""
         document_labels = []
         
-        logging.warning("CALLED EXTRACT LABELS")
         for i, result in enumerate(search_results):
             doc_id = result.id or f"unknown_{i}"
             source_file = result.sourcefile or result.sourcepage or self._config.UNKNOWN_SOURCE
             metadata_sensitivity_label = result.metadata_sensitivity_label
-            logging.warning("Label value: %s", metadata_sensitivity_label)
 
             if not metadata_sensitivity_label:
                 continue
