@@ -1,6 +1,7 @@
 import React from "react";
-import { Icon, TooltipHost } from "@fluentui/react";
 import { ResponseSensitivityInfo } from "../../api";
+import { SensitivityBadge } from "../SensitivityBadge";
+import styles from "./ResponseSensitivityBanner.module.css";
 
 interface Props {
     sensitivity: ResponseSensitivityInfo;
@@ -8,34 +9,13 @@ interface Props {
 
 export const ResponseSensitivityBanner: React.FC<Props> = ({ sensitivity }) => {
     const { overall_label } = sensitivity;
-    const displayText = overall_label.display_name || overall_label.name;
-    const badgeColor = overall_label.color || "#6c757d"; // Use API color directly, fallback to gray
+    const finalLabelName = overall_label.display_name?.trim() || overall_label.name?.trim() || "Unknown label";
 
     return (
-        <TooltipHost content={displayText}>
-            <div
-                style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    padding: "4px 8px",
-                    backgroundColor: badgeColor,
-                    color: "white",
-                    borderRadius: "4px",
-                    fontSize: "0.8rem",
-                    fontWeight: "500",
-                    cursor: "pointer",
-                    margin: "8px 0"
-                }}
-            >
-                <Icon
-                    iconName="ShieldAlert"
-                    style={{
-                        fontSize: "12px",
-                        marginRight: "4px"
-                    }}
-                />
-                {displayText}
-            </div>
-        </TooltipHost>
+        <div className={styles.container}>
+            <span className={styles.title}>Response sensitivity label</span>
+            <SensitivityBadge label={overall_label} />
+            <span className={styles.description}>{`Label name: ${finalLabelName}`}</span>
+        </div>
     );
 };

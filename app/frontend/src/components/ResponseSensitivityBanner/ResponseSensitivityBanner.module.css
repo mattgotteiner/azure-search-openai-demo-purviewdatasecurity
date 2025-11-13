@@ -1,0 +1,21 @@
+.container {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 12px;
+    margin: 8px 0;
+    background: #f3f2f1;
+    border-radius: 6px;
+}
+
+.title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #201f1e;
+}
+
+.description {
+    font-size: 0.75rem;
+    color: #605e5c;
+}

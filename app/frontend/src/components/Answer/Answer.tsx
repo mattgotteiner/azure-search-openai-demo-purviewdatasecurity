@@ -44,20 +44,70 @@ export const Answer = ({
     showSpeechOutputBrowser
 }: Props) => {
     const followupQuestions = answer.context?.followup_questions;
-    const parsedAnswer = useMemo(() => parseAnswerToHtml(answer, isStreaming, onCitationClicked), [answer]);
+    const parsedAnswer = useMemo(() => parseAnswerToHtml(answer, isStreaming, onCitationClicked), [answer, isStreaming, onCitationClicked]);
     const { t } = useTranslation();
     const sanitizedAnswerHtml = DOMPurify.sanitize(parsedAnswer.answerHtml);
     const hasCitations = parsedAnswer.citations.length > 0;
     const [copied, setCopied] = useState(false);
 
     // Helper function to find the sensitivity label for a citation
-    const findLabelForCitation = (citationFileName: string) => {
-        if (!answer.context.sensitivity?.document_labels) return null;
+    const getLabelName = (label?: { display_name?: string | null; name?: string | null }) => {
+        if (!label) {
+            return "Unknown label";
+        }
 
-        return answer.context.sensitivity.document_labels.find(
-            docLabel =>
-                docLabel.source_file === citationFileName || docLabel.source_file.includes(citationFileName) || citationFileName.includes(docLabel.source_file)
-        );
+        return label.display_name?.trim() || label.name?.trim() || "Unknown label";
+    };
+
+    const findLabelForCitation = (citationFileName: string) => {
+        const documentLabels = answer.context.sensitivity?.document_labels;
+        if (!documentLabels?.length) {
+            return null;
+        }
+
+        const normalizeSource = (value: string) => {
+            if (!value) {
+                return "";
+            }
+
+            let decodedValue = value;
+            try {
+                decodedValue = decodeURIComponent(value);
+            } catch {
+                // Swallow decode errors and fall back to original value
+            }
+
+            const lowerCased = decodedValue.toLowerCase().replace(/\\/g, "/");
+            const withoutFragment = lowerCased.split("#")[0];
+            const withoutQuery = withoutFragment.split("?")[0];
+            return withoutQuery.trim();
+        };
+
+        const getBasename = (value: string) => {
+            const parts = value.split("/");
+            return parts[parts.length - 1];
+        };
+
+        const normalizedCitation = normalizeSource(citationFileName);
+        const citationBasename = getBasename(normalizedCitation);
+
+        return documentLabels.find(docLabel => {
+            const normalizedSource = normalizeSource(docLabel.source_file);
+            if (!normalizedSource) {
+                return false;
+            }
+
+            if (normalizedSource === normalizedCitation) {
+                return true;
+            }
+
+            if (normalizedCitation.includes(normalizedSource) || normalizedSource.includes(normalizedCitation)) {
+                return true;
+            }
+
+            const sourceBasename = getBasename(normalizedSource);
+            return sourceBasename === citationBasename;
+        });
     };
 
     const handleCopy = () => {
@@ -126,12 +176,14 @@ export const Answer = ({
                                 const path = getCitationFilePath(x);
                                 const labelInfo = findLabelForCitation(x);
 
+                                const displayLabel = getLabelName(labelInfo?.label);
+
                                 return (
                                     <div key={i} className={styles.citationContainer}>
                                         <a className={styles.citation} title={x} onClick={() => onCitationClicked(path)}>
                                             {`${++i}. ${x}`}
                                         </a>
-                                        {labelInfo && <span className={styles.citationLabel}>{labelInfo.label.display_name || labelInfo.label.name}</span>}
+                                        {labelInfo && <span className={styles.citationLabel}>{`Original label: ${displayLabel}`}</span>}
                                     </div>
                                 );
                             })}
