@@ -17,8 +17,7 @@ import {
     ResponseMessage,
     VectorFields,
     GPT4VInput,
-    SpeechConfig,
-    sendToPurview
+    SpeechConfig
 } from "../../api";
 import { Answer, AnswerError, AnswerLoading } from "../../components/Answer";
 import { QuestionInput } from "../../components/QuestionInput";
@@ -37,7 +36,6 @@ import { TokenClaimsDisplay } from "../../components/TokenClaimsDisplay";
 import { LoginContext } from "../../loginContext";
 import { LanguagePicker } from "../../i18n/LanguagePicker";
 import { Settings } from "../../components/Settings/Settings";
-import { apitoken } from "../../p4ai/auth";
 
 const Chat = () => {
     const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
@@ -93,7 +91,6 @@ const Chat = () => {
     const [showSpeechOutputAzure, setShowSpeechOutputAzure] = useState<boolean>(false);
     const [showChatHistoryBrowser, setShowChatHistoryBrowser] = useState<boolean>(false);
     const [showChatHistoryCosmos, setShowChatHistoryCosmos] = useState<boolean>(false);
-    const [showAgenticRetrievalOption, setShowAgenticRetrievalOption] = useState<boolean>(false);
     const [useAgenticRetrieval, setUseAgenticRetrieval] = useState<boolean>(false);
 
     const audio = useRef(new Audio()).current;
@@ -136,11 +133,6 @@ const Chat = () => {
             setShowSpeechOutputAzure(config.showSpeechOutputAzure);
             setShowChatHistoryBrowser(config.showChatHistoryBrowser);
             setShowChatHistoryCosmos(config.showChatHistoryCosmos);
-            setShowAgenticRetrievalOption(config.showAgenticRetrievalOption);
-            setUseAgenticRetrieval(config.showAgenticRetrievalOption);
-            if (config.showAgenticRetrievalOption) {
-                setRetrieveCount(10);
-            }
         });
     };
 
@@ -201,28 +193,22 @@ const Chat = () => {
         lastQuestionRef.current = question;
 
         error && setError(undefined);
-        setIsLoading(true);
         setActiveCitation(undefined);
         setActiveAnalysisPanelTab(undefined);
 
+        // Set loading state immediately to ensure user message is displayed during async operations
+        setIsLoading(true);
+
+        // Use setTimeout to ensure React state update is processed and UI renders before async operations
+        await new Promise(resolve => setTimeout(resolve, 0));
+
         const token = client ? await getToken(client) : undefined;
-
-        if (!apitoken) {
-            throw new Error("API token is not set. Please ensure you are logged in.");
-        }
-
-        var convid = sessionStorage.getItem("convid");
-        if (!convid) {
-            convid = crypto.randomUUID();
-            sessionStorage.setItem("convid", convid);
-        }
 
         try {
             const messages: ResponseMessage[] = answers.flatMap(a => [
                 { content: a[0], role: "user" },
                 { content: a[1].message.content, role: "assistant" }
             ]);
-
             const request: ChatAppRequest = {
                 messages: [...messages, { content: question, role: "user" }],
                 context: {
@@ -256,50 +242,6 @@ const Chat = () => {
                 session_state: answers.length ? answers[answers.length - 1][1].session_state : null
             };
 
-            if (request.messages && request.messages.length > 0) {
-                // Get the last message from the array
-                const lastMessage = request.messages[request.messages.length - 1].content;
-                var storedSeq = sessionStorage.getItem("sequenceNumber");
-                var nextSeq = storedSeq ? parseInt(storedSeq) + 1 : 1;
-                sessionStorage.setItem("sequenceNumber", nextSeq.toString());
-
-                console.log("Sending prompt to purview");
-
-                try {
-                    const p4aiResponse = await sendToPurview(apitoken, lastMessage, "prompt", convid, nextSeq);
-
-                    if (!p4aiResponse.ok) {
-                        throw new Error(`Sending to Purview failed with status ${p4aiResponse.status}: ${await p4aiResponse.text()}`);
-                    }
-                } catch (error: any) {
-                    if (error.code === "PURVIEW_POLICY_BLOCK") {
-                        // ❗Insert assistant response indicating block
-                        const blockedMessage: ChatAppResponse = {
-                            message: {
-                                role: "assistant",
-                                content: "This action has been blocked due to the security policies enforced by your organization."
-                            },
-                            delta: {
-                                role: "assistant",
-                                content: "This action has been blocked due to the security policies enforced by your organization."
-                            },
-                            context: { data_points: [], followup_questions: [], thoughts: [] },
-                            session_state: null
-                        };
-
-                        setAnswers(prev => [...prev, [question, blockedMessage]]);
-
-                        return;
-                    }
-
-                    // Generic error handler
-                    console.error("Error during sendToPurview:", error);
-                    throw error;
-                }
-            } else {
-                console.warn("No messages found in the request. Skipping sendToPurview.");
-            }
-
             const response = await chatApi(request, shouldStream, token);
             if (!response.body) {
                 throw Error("No response body");
@@ -309,15 +251,7 @@ const Chat = () => {
             }
             if (shouldStream) {
                 const parsedResponse: ChatAppResponse = await handleAsyncRequest(question, answers, response.body);
-                var storedSeq = sessionStorage.getItem("sequenceNumber");
-                var nextSeq = storedSeq ? parseInt(storedSeq) + 1 : 1;
-                sessionStorage.setItem("sequenceNumber", nextSeq.toString());
-
-                console.log("Sending response to purview");
-                const p4aiResponse = await sendToPurview(apitoken, parsedResponse.message.content, "response", convid, nextSeq);
-                if (!p4aiResponse.ok) {
-                    throw new Error(`Sending to Purview failed with status ${p4aiResponse.status}: ${await p4aiResponse.text()}`);
-                }
+                // Set answers immediately so the response is visible while streaming continues
                 setAnswers([...answers, [question, parsedResponse]]);
                 if (typeof parsedResponse.session_state === "string" && parsedResponse.session_state !== "") {
                     const token = client ? await getToken(client) : undefined;
@@ -328,15 +262,7 @@ const Chat = () => {
                 if (parsedResponse.error) {
                     throw Error(parsedResponse.error);
                 }
-                var storedSeq = sessionStorage.getItem("sequenceNumber");
-                var nextSeq = storedSeq ? parseInt(storedSeq) + 1 : 1;
-                sessionStorage.setItem("sequenceNumber", nextSeq.toString());
-
-                console.log("Sending response to purview");
-                const p4aiResponse = await sendToPurview(apitoken, parsedResponse.message.content, "response", convid, nextSeq);
-                if (!p4aiResponse.ok) {
-                    throw new Error(`Sending to Purview failed with status ${p4aiResponse.status}: ${await p4aiResponse.text()}`);
-                }
+                // Set answers immediately so the response is visible while streaming continues
                 setAnswers([...answers, [question, parsedResponse as ChatAppResponse]]);
                 if (typeof parsedResponse.session_state === "string" && parsedResponse.session_state !== "") {
                     const token = client ? await getToken(client) : undefined;
@@ -645,7 +571,6 @@ const Chat = () => {
                         streamingEnabled={streamingEnabled}
                         useSuggestFollowupQuestions={useSuggestFollowupQuestions}
                         showSuggestFollowupQuestions={true}
-                        showAgenticRetrievalOption={showAgenticRetrievalOption}
                         useAgenticRetrieval={useAgenticRetrieval}
                         onChange={handleSettingsChange}
                     />

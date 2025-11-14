@@ -128,8 +128,18 @@ def server_app_permission_setup(server_app_id: str) -> Application:
                     ResourceAccess(id=uuid.UUID("{37f7f235-527c-4136-accd-4a02d197296e}"), type="Scope"),
                     # Graph profile
                     ResourceAccess(id=uuid.UUID("{14dad69e-099b-42c9-810b-d002981feec1}"), type="Scope"),
+                    # Purview SensitivityLabels.Read.All - required for delegated label resolution
+                    ResourceAccess(id=uuid.UUID("{8b377c27-ea19-4863-a948-8a8588c8f2c3}"), type="Scope")
                 ],
-            )
+            ),
+            RequiredResourceAccess(
+                # Azure Search App ID
+                resource_app_id="880da380-985e-4198-81b9-e05b1cc53158",
+                resource_access=[
+                    # user_impersonation
+                    ResourceAccess(id=uuid.UUID("{a4165a31-5d9e-4120-bd1e-9d88c66fd3b8}"), type="Scope")
+                ],
+            ),
         ],
         identifier_uris=[f"api://{server_app_id}"],
     )
@@ -158,13 +168,14 @@ def client_app(server_app_id: str, server_app: Application, identifier: int) -> 
                     )
                 ],
             ),
-            # Graph User.Read
+            # Microsoft Graph API scopes
             RequiredResourceAccess(
                 resource_app_id="00000003-0000-0000-c000-000000000000",
                 resource_access=[
+                    # Graph User.Read
                     ResourceAccess(id=uuid.UUID("e1fe6dd8-ba31-4d61-89e7-88639da4683d"), type="Scope"),
                 ],
-            ),
+            )
         ],
     )
 

@@ -6,16 +6,6 @@ from typing import Any, Callable, Optional, TypedDict, Union, cast
 from urllib.parse import urljoin
 
 import aiohttp
-from azure.search.documents.agent.aio import KnowledgeAgentRetrievalClient
-from azure.search.documents.agent.models import (
-    KnowledgeAgentAzureSearchDocReference,
-    KnowledgeAgentIndexParams,
-    KnowledgeAgentMessage,
-    KnowledgeAgentMessageTextContent,
-    KnowledgeAgentRetrievalRequest,
-    KnowledgeAgentRetrievalResponse,
-    KnowledgeAgentSearchActivityRecord,
-)
 from azure.search.documents.aio import SearchClient
 from azure.search.documents.models import (
     QueryCaptionResult,
@@ -36,6 +26,11 @@ from openai.types.chat import (
 from approaches.promptmanager import PromptManager
 from core.authentication import AuthenticationHelper
 
+# Import for type hints - will be fully imported in methods to avoid circular imports
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from core.labelhelper import ResponseSensitivity
+
 
 @dataclass
 class Document:
@@ -50,6 +45,7 @@ class Document:
     score: Optional[float] = None
     reranker_score: Optional[float] = None
     search_agent_query: Optional[str] = None
+    metadata_sensitivity_label: Optional[str] = None
 
     def serialize_for_results(self) -> dict[str, Any]:
         result_dict = {
@@ -94,6 +90,7 @@ class ThoughtStep:
 class DataPoints:
     text: Optional[list[str]] = None
     images: Optional[list] = None
+    sensitivity: Optional["ResponseSensitivity"] = None
 
 
 @dataclass
@@ -101,6 +98,7 @@ class ExtraInfo:
     data_points: DataPoints
     thoughts: Optional[list[ThoughtStep]] = None
     followup_questions: Optional[list[Any]] = None
+    sensitivity: Optional["ResponseSensitivity"] = None
 
 
 @dataclass
@@ -155,6 +153,7 @@ class Approach(ABC):
         vision_token_provider: Callable[[], Awaitable[str]],
         prompt_manager: PromptManager,
         reasoning_effort: Optional[str] = None,
+        label_helper: Optional[Any] = None,
     ):
         self.search_client = search_client
         self.openai_client = openai_client
@@ -170,6 +169,7 @@ class Approach(ABC):
         self.vision_token_provider = vision_token_provider
         self.prompt_manager = prompt_manager
         self.reasoning_effort = reasoning_effort
+        self.label_helper = label_helper
         self.include_token_usage = True
 
     def build_filter(self, overrides: dict[str, Any], auth_claims: dict[str, Any]) -> Optional[str]:
@@ -198,6 +198,7 @@ class Approach(ABC):
         minimum_search_score: Optional[float] = None,
         minimum_reranker_score: Optional[float] = None,
         use_query_rewriting: Optional[bool] = None,
+        access_token: Optional[str] = None,
     ) -> list[Document]:
         search_text = query_text if use_text_search else ""
         search_vectors = vectors if use_vector_search else []
@@ -214,6 +215,7 @@ class Approach(ABC):
                 query_speller=self.query_speller,
                 semantic_configuration_name="default",
                 semantic_query=query_text,
+                x_ms_query_source_authorization=access_token
             )
         else:
             results = await self.search_client.search(
@@ -221,6 +223,7 @@ class Approach(ABC):
                 filter=filter,
                 top=top,
                 vector_queries=search_vectors,
+                x_ms_query_source_authorization=access_token
             )
 
         documents = []
@@ -238,6 +241,7 @@ class Approach(ABC):
                         captions=cast(list[QueryCaptionResult], document.get("@search.captions")),
                         score=document.get("@search.score"),
                         reranker_score=document.get("@search.reranker_score"),
+                        metadata_sensitivity_label=document.get("metadata_sensitivity_label"),
                     )
                 )
 
@@ -251,74 +255,6 @@ class Approach(ABC):
             ]
 
         return qualified_documents
-
-    async def run_agentic_retrieval(
-        self,
-        messages: list[ChatCompletionMessageParam],
-        agent_client: KnowledgeAgentRetrievalClient,
-        search_index_name: str,
-        top: Optional[int] = None,
-        filter_add_on: Optional[str] = None,
-        minimum_reranker_score: Optional[float] = None,
-        max_docs_for_reranker: Optional[int] = None,
-        results_merge_strategy: Optional[str] = None,
-    ) -> tuple[KnowledgeAgentRetrievalResponse, list[Document]]:
-        # STEP 1: Invoke agentic retrieval
-        response = await agent_client.retrieve(
-            retrieval_request=KnowledgeAgentRetrievalRequest(
-                messages=[
-                    KnowledgeAgentMessage(
-                        role=str(msg["role"]), content=[KnowledgeAgentMessageTextContent(text=str(msg["content"]))]
-                    )
-                    for msg in messages
-                    if msg["role"] != "system"
-                ],
-                target_index_params=[
-                    KnowledgeAgentIndexParams(
-                        index_name=search_index_name,
-                        reranker_threshold=minimum_reranker_score,
-                        max_docs_for_reranker=max_docs_for_reranker,
-                        filter_add_on=filter_add_on,
-                        include_reference_source_data=True,
-                    )
-                ],
-            )
-        )
-
-        # STEP 2: Generate a contextual and content specific answer using the search results and chat history
-        activities = response.activity
-        activity_mapping = (
-            {
-                activity.id: activity.query.search if activity.query else ""
-                for activity in activities
-                if isinstance(activity, KnowledgeAgentSearchActivityRecord)
-            }
-            if activities
-            else {}
-        )
-
-        results = []
-        if response and response.references:
-            if results_merge_strategy == "interleaved":
-                # Use interleaved reference order
-                references = sorted(response.references, key=lambda reference: int(reference.id))
-            else:
-                # Default to descending strategy
-                references = response.references
-            for reference in references:
-                if isinstance(reference, KnowledgeAgentAzureSearchDocReference) and reference.source_data:
-                    results.append(
-                        Document(
-                            id=reference.doc_key,
-                            content=reference.source_data["content"],
-                            sourcepage=reference.source_data["sourcepage"],
-                            search_agent_query=activity_mapping[reference.activity_source],
-                        )
-                    )
-                if top and len(results) == top:
-                    break
-
-        return response, results
 
     def get_sources_content(
         self, results: list[Document], use_semantic_captions: bool, use_image_citation: bool
@@ -374,7 +310,7 @@ class Approach(ABC):
         query_vector = embedding.data[0].embedding
         # This performs an oversampling due to how the search index was setup,
         # so we do not need to explicitly pass in an oversampling parameter here
-        return VectorizedQuery(vector=query_vector, k_nearest_neighbors=50, fields=self.embedding_field)
+        return VectorizedQuery(vector=query_vector, k=50, fields=self.embedding_field)
 
     async def compute_image_embedding(self, q: str):
         endpoint = urljoin(self.vision_endpoint, "computervision/retrieval:vectorizeText")
@@ -390,7 +326,7 @@ class Approach(ABC):
             ) as response:
                 json = await response.json()
                 image_query_vector = json["vector"]
-        return VectorizedQuery(vector=image_query_vector, k_nearest_neighbors=50, fields="imageEmbedding")
+        return VectorizedQuery(vector=image_query_vector, k=50, fields="imageEmbedding")
 
     def get_system_prompt_variables(self, override_prompt: Optional[str]) -> dict[str, str]:
         # Allows client to replace the entire prompt, or to inject into the existing prompt using >>>
@@ -491,3 +427,26 @@ class Approach(ABC):
         context: dict[str, Any] = {},
     ) -> AsyncGenerator[dict[str, Any], None]:
         raise NotImplementedError
+
+    async def process_sensitivity_labels(self, results, auth_claims: dict[str, Any]) -> Optional["ResponseSensitivity"]:
+        """Process sensitivity labels from search results and compute response sensitivity."""
+        try:
+            label_helper = getattr(self, "label_helper", None)
+            if not label_helper:
+                from core.labelhelper import LabelHelper
+                label_helper = LabelHelper()
+                setattr(self, "label_helper", label_helper)
+            
+            # Extract user's Graph access token for delegated label resolution
+            user_graph_token = auth_claims.get("graph_access_token")
+
+            document_labels = await label_helper.extract_labels_from_search_results(results, user_graph_token)
+            
+            if not document_labels:
+                return None
+                
+            # Compute response sensitivity
+            return await label_helper.compute_label_inheritance(document_labels)
+            
+        except Exception as e:
+            return None

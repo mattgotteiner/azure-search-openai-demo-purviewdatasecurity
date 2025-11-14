@@ -9,10 +9,6 @@ from azure.search.documents.indexes.models import (
     BinaryQuantizationCompression,
     HnswAlgorithmConfiguration,
     HnswParameters,
-    KnowledgeAgent,
-    KnowledgeAgentAzureOpenAIModel,
-    KnowledgeAgentRequestLimits,
-    KnowledgeAgentTargetIndex,
     RescoringOptions,
     SearchableField,
     SearchField,
@@ -227,6 +223,19 @@ class SearchManager:
                 if self.use_int_vectorization:
                     logger.info("Including parent_id field for integrated vectorization support in new index")
                     fields.append(SearchableField(name="parent_id", type="Edm.String", filterable=True))
+                    if self.use_acls:
+                        fields.append(
+                            SearchField(
+                                name="metadata_sensitivity_label",
+                                type="Edm.String",
+                                searchable=True,
+                                filterable=True,
+                                hidden=False,
+                                sortable=False,
+                                facetable=False,
+                                sensitivity_label=True
+                            )
+                        )
 
                 vectorizers: list[VectorSearchVectorizer] = []
                 vector_search_profiles = []
@@ -258,6 +267,7 @@ class SearchManager:
                 index = SearchIndex(
                     name=self.search_info.index_name,
                     fields=fields,
+                    purview_enabled=self.use_int_vectorization and self.use_acls,
                     semantic_search=SemanticSearch(
                         default_configuration_name="default",
                         configurations=[
@@ -377,38 +387,6 @@ class SearchManager:
                             "Can't add vectorizer to search index %s since no Azure OpenAI embeddings service is defined",
                             self.search_info,
                         )
-        if self.search_info.use_agentic_retrieval and self.search_info.agent_name:
-            await self.create_agent()
-
-    async def create_agent(self):
-        if self.search_info.agent_name:
-            logger.info(f"Creating search agent named {self.search_info.agent_name}")
-
-            async with self.search_info.create_search_index_client() as search_index_client:
-                await search_index_client.create_or_update_agent(
-                    agent=KnowledgeAgent(
-                        name=self.search_info.agent_name,
-                        target_indexes=[
-                            KnowledgeAgentTargetIndex(
-                                index_name=self.search_info.index_name, default_include_reference_source_data=True
-                            )
-                        ],
-                        models=[
-                            KnowledgeAgentAzureOpenAIModel(
-                                azure_open_ai_parameters=AzureOpenAIVectorizerParameters(
-                                    resource_url=self.search_info.azure_openai_endpoint,
-                                    deployment_name=self.search_info.azure_openai_searchagent_deployment,
-                                    model_name=self.search_info.azure_openai_searchagent_model,
-                                )
-                            )
-                        ],
-                        request_limits=KnowledgeAgentRequestLimits(
-                            max_output_size=self.search_info.agent_max_output_tokens
-                        ),
-                    )
-                )
-
-            logger.info("Agent %s created successfully", self.search_info.agent_name)
 
     async def update_content(
         self, sections: list[Section], image_embeddings: Optional[list[list[float]]] = None, url: Optional[str] = None

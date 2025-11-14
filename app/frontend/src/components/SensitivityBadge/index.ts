@@ -1,0 +1,1 @@
+export { SensitivityBadge } from "./SensitivityBadge";

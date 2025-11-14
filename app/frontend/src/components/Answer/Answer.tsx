@@ -12,6 +12,8 @@ import { parseAnswerToHtml } from "./AnswerParser";
 import { AnswerIcon } from "./AnswerIcon";
 import { SpeechOutputBrowser } from "./SpeechOutputBrowser";
 import { SpeechOutputAzure } from "./SpeechOutputAzure";
+import { ResponseSensitivityBanner } from "../ResponseSensitivityBanner";
+import { SensitivityBadge } from "../SensitivityBadge";
 
 interface Props {
     answer: ChatAppResponse;
@@ -43,10 +45,71 @@ export const Answer = ({
     showSpeechOutputBrowser
 }: Props) => {
     const followupQuestions = answer.context?.followup_questions;
-    const parsedAnswer = useMemo(() => parseAnswerToHtml(answer, isStreaming, onCitationClicked), [answer]);
+    const parsedAnswer = useMemo(() => parseAnswerToHtml(answer, isStreaming, onCitationClicked), [answer, isStreaming, onCitationClicked]);
     const { t } = useTranslation();
     const sanitizedAnswerHtml = DOMPurify.sanitize(parsedAnswer.answerHtml);
+    const hasCitations = parsedAnswer.citations.length > 0;
     const [copied, setCopied] = useState(false);
+
+    // Helper function to find the sensitivity label for a citation
+    const getLabelName = (label?: { display_name?: string | null; name?: string | null }) => {
+        if (!label) {
+            return "Unknown label";
+        }
+
+        return label.display_name?.trim() || label.name?.trim() || "Unknown label";
+    };
+
+    const findLabelForCitation = (citationFileName: string) => {
+        const documentLabels = answer.context.sensitivity?.document_labels;
+        if (!documentLabels?.length) {
+            return null;
+        }
+
+        const normalizeSource = (value: string) => {
+            if (!value) {
+                return "";
+            }
+
+            let decodedValue = value;
+            try {
+                decodedValue = decodeURIComponent(value);
+            } catch {
+                // Swallow decode errors and fall back to original value
+            }
+
+            const lowerCased = decodedValue.toLowerCase().replace(/\\/g, "/");
+            const withoutFragment = lowerCased.split("#")[0];
+            const withoutQuery = withoutFragment.split("?")[0];
+            return withoutQuery.trim();
+        };
+
+        const getBasename = (value: string) => {
+            const parts = value.split("/");
+            return parts[parts.length - 1];
+        };
+
+        const normalizedCitation = normalizeSource(citationFileName);
+        const citationBasename = getBasename(normalizedCitation);
+
+        return documentLabels.find(docLabel => {
+            const normalizedSource = normalizeSource(docLabel.source_file);
+            if (!normalizedSource) {
+                return false;
+            }
+
+            if (normalizedSource === normalizedCitation) {
+                return true;
+            }
+
+            if (normalizedCitation.includes(normalizedSource) || normalizedSource.includes(normalizedCitation)) {
+                return true;
+            }
+
+            const sourceBasename = getBasename(normalizedSource);
+            return sourceBasename === citationBasename;
+        });
+    };
 
     const handleCopy = () => {
         // Single replace to remove all HTML tags to remove the citations
@@ -102,21 +165,36 @@ export const Answer = ({
                 <div className={styles.answerText}>
                     <ReactMarkdown children={sanitizedAnswerHtml} rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]} />
                 </div>
+                {hasCitations && answer.context.sensitivity && <ResponseSensitivityBanner sensitivity={answer.context.sensitivity} />}
             </Stack.Item>
 
-            {!!parsedAnswer.citations.length && (
+            {hasCitations && (
                 <Stack.Item>
-                    <Stack horizontal wrap tokens={{ childrenGap: 5 }}>
+                    <div>
                         <span className={styles.citationLearnMore}>{t("citationWithColon")}</span>
-                        {parsedAnswer.citations.map((x, i) => {
-                            const path = getCitationFilePath(x);
-                            return (
-                                <a key={i} className={styles.citation} title={x} onClick={() => onCitationClicked(path)}>
-                                    {`${++i}. ${x}`}
-                                </a>
-                            );
-                        })}
-                    </Stack>
+                        <Stack tokens={{ childrenGap: 5 }}>
+                            {parsedAnswer.citations.map((x, i) => {
+                                const path = getCitationFilePath(x);
+                                const labelInfo = findLabelForCitation(x);
+                                const labelDisplayName = getLabelName(labelInfo?.label);
+
+                                return (
+                                    <div key={i} className={styles.citationContainer}>
+                                        <a className={styles.citation} title={x} onClick={() => onCitationClicked(path)}>
+                                            {`${++i}. ${x}`}
+                                        </a>
+                                        {labelInfo?.label ? (
+                                            <div className={styles.citationLabelBadge}>
+                                                <SensitivityBadge label={labelInfo.label} size="small" />
+                                            </div>
+                                        ) : labelInfo ? (
+                                            <span className={styles.citationLabelFallback}>{labelDisplayName}</span>
+                                        ) : null}
+                                    </div>
+                                );
+                            })}
+                        </Stack>
+                    </div>
                 </Stack.Item>
             )}
 

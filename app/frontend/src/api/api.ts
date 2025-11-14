@@ -3,11 +3,6 @@ const BACKEND_URI = "";
 import { ChatAppResponse, ChatAppResponseOrError, ChatAppRequest, Config, SimpleAPIResponse, HistoryListApiResponse, HistoryApiResponse } from "./models";
 import { useLogin, getToken, isUsingAppServicesLogin } from "../authConfig";
 
-import { apitoken, getUserIdFromToken } from "../p4ai/auth";
-import { getProtectionScope } from "../p4ai/protectionScope";
-import { processContent } from "../p4ai/processContent";
-import { processContentAsync } from "../p4ai/processContentAsync";
-
 export async function getHeaders(idToken: string | undefined): Promise<Record<string, string>> {
     // If using login and not using app services, add the id token of the logged in account as the authorization
     if (useLogin && !isUsingAppServicesLogin) {
@@ -57,52 +52,6 @@ export async function chatApi(request: ChatAppRequest, shouldStream: boolean, id
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify(request)
     });
-}
-
-export async function sendToPurview(
-    p4aiToken: string,
-    message: string,
-    messageType: "prompt" | "response",
-    conversationId: string,
-    sequenceNumber: number
-): Promise<Response> {
-    const userId = await getUserIdFromToken(p4aiToken);
-
-    if (!userId) {
-        throw new Error("User ID not found in access token.");
-    }
-
-    const cachedEtag = localStorage.getItem("purview:etag");
-    const cachedScope = localStorage.getItem("purview:scope");
-    const scopeState = sessionStorage.getItem("scopeState");
-    console.log("Scope state:", scopeState);
-    let scopeIdentifier: string | undefined = undefined;
-    let etag: string | undefined = undefined;
-    let notModified: boolean = false;
-
-    if (scopeState == "modified" || scopeState == null) {
-        const { scopeIdentifier, etag, notModified } = await getProtectionScope(p4aiToken, userId, cachedEtag || undefined);
-    } else {
-        notModified = true;
-    }
-
-    const finalScopeIdentifier = notModified ? cachedScope! : scopeIdentifier!;
-
-    if (!notModified && etag && scopeIdentifier) {
-        localStorage.setItem("purview:etag", etag);
-        localStorage.setItem("purview:scope", scopeIdentifier);
-    }
-
-    const method = messageType === "prompt" ? "uploadText" : "downloadText";
-    let processResponse: Response;
-    if (sessionStorage.getItem(method) === "evaluateInline") {
-        processResponse = await processContent(p4aiToken, userId, message, messageType, conversationId, sequenceNumber, finalScopeIdentifier);
-    } else {
-        console.log("Evaluating content asynchronously offline.");
-        processResponse = await processContentAsync(p4aiToken, userId, message, messageType, conversationId, sequenceNumber, finalScopeIdentifier);
-    }
-
-    return processResponse;
 }
 
 export async function getSpeechApi(text: string): Promise<string | null> {

@@ -1,6 +1,5 @@
 from typing import Any, Optional, cast
 
-from azure.search.documents.agent.aio import KnowledgeAgentRetrievalClient
 from azure.search.documents.aio import SearchClient
 from azure.search.documents.models import VectorQuery
 from openai import AsyncOpenAI
@@ -23,9 +22,6 @@ class RetrieveThenReadApproach(Approach):
         *,
         search_client: SearchClient,
         search_index_name: str,
-        agent_model: Optional[str],
-        agent_deployment: Optional[str],
-        agent_client: KnowledgeAgentRetrievalClient,
         auth_helper: AuthenticationHelper,
         openai_client: AsyncOpenAI,
         chatgpt_model: str,
@@ -40,12 +36,10 @@ class RetrieveThenReadApproach(Approach):
         query_speller: str,
         prompt_manager: PromptManager,
         reasoning_effort: Optional[str] = None,
+        label_helper: Optional[Any] = None,
     ):
         self.search_client = search_client
         self.search_index_name = search_index_name
-        self.agent_model = agent_model
-        self.agent_deployment = agent_deployment
-        self.agent_client = agent_client
         self.chatgpt_deployment = chatgpt_deployment
         self.openai_client = openai_client
         self.auth_helper = auth_helper
@@ -63,6 +57,7 @@ class RetrieveThenReadApproach(Approach):
         self.answer_prompt = self.prompt_manager.load_prompt("ask_answer_question.prompty")
         self.reasoning_effort = reasoning_effort
         self.include_token_usage = True
+        self.label_helper = label_helper
 
     async def run(
         self,
@@ -72,15 +67,11 @@ class RetrieveThenReadApproach(Approach):
     ) -> dict[str, Any]:
         overrides = context.get("overrides", {})
         auth_claims = context.get("auth_claims", {})
-        use_agentic_retrieval = True if overrides.get("use_agentic_retrieval") else False
         q = messages[-1]["content"]
         if not isinstance(q, str):
             raise ValueError("The most recent message content must be a string.")
 
-        if use_agentic_retrieval:
-            extra_info = await self.run_agentic_retrieval_approach(messages, overrides, auth_claims)
-        else:
-            extra_info = await self.run_search_approach(messages, overrides, auth_claims)
+        extra_info = await self.run_search_approach(messages, overrides, auth_claims)
 
         # Process results
         messages = self.prompt_manager.render_prompt(
@@ -114,7 +105,12 @@ class RetrieveThenReadApproach(Approach):
                 "content": chat_completion.choices[0].message.content,
                 "role": chat_completion.choices[0].message.role,
             },
-            "context": extra_info,
+            "context": {
+                "data_points": extra_info.data_points.text,
+                "thoughts": extra_info.thoughts,
+                "followup_questions": extra_info.followup_questions,
+                "sensitivity": extra_info.sensitivity,  # Use sensitivity from extra_info level
+            },
             "session_state": session_state,
         }
 
@@ -149,12 +145,15 @@ class RetrieveThenReadApproach(Approach):
             minimum_search_score,
             minimum_reranker_score,
             use_query_rewriting,
+            access_token=auth_claims.get("access_token") if self.auth_helper.use_authentication else None,
         )
 
         text_sources = self.get_sources_content(results, use_semantic_captions, use_image_citation=False)
 
+        sensitivity = await self.process_sensitivity_labels(results, auth_claims)
+
         return ExtraInfo(
-            DataPoints(text=text_sources),
+            data_points=DataPoints(text=text_sources, sensitivity=sensitivity),
             thoughts=[
                 ThoughtStep(
                     "Search using user query",
@@ -174,59 +173,5 @@ class RetrieveThenReadApproach(Approach):
                     [result.serialize_for_results() for result in results],
                 ),
             ],
+            sensitivity=sensitivity,
         )
-
-    async def run_agentic_retrieval_approach(
-        self,
-        messages: list[ChatCompletionMessageParam],
-        overrides: dict[str, Any],
-        auth_claims: dict[str, Any],
-    ):
-        minimum_reranker_score = overrides.get("minimum_reranker_score", 0)
-        search_index_filter = self.build_filter(overrides, auth_claims)
-        top = overrides.get("top", 3)
-        max_subqueries = overrides.get("max_subqueries", 10)
-        results_merge_strategy = overrides.get("results_merge_strategy", "interleaved")
-        # 50 is the amount of documents that the reranker can process per query
-        max_docs_for_reranker = max_subqueries * 50
-
-        response, results = await self.run_agentic_retrieval(
-            messages,
-            self.agent_client,
-            search_index_name=self.search_index_name,
-            top=top,
-            filter_add_on=search_index_filter,
-            minimum_reranker_score=minimum_reranker_score,
-            max_docs_for_reranker=max_docs_for_reranker,
-            results_merge_strategy=results_merge_strategy,
-        )
-
-        text_sources = self.get_sources_content(results, use_semantic_captions=False, use_image_citation=False)
-
-        extra_info = ExtraInfo(
-            DataPoints(text=text_sources),
-            thoughts=[
-                ThoughtStep(
-                    "Use agentic retrieval",
-                    messages,
-                    {
-                        "reranker_threshold": minimum_reranker_score,
-                        "max_docs_for_reranker": max_docs_for_reranker,
-                        "results_merge_strategy": results_merge_strategy,
-                        "filter": search_index_filter,
-                    },
-                ),
-                ThoughtStep(
-                    f"Agentic retrieval results (top {top})",
-                    [result.serialize_for_results() for result in results],
-                    {
-                        "query_plan": (
-                            [activity.as_dict() for activity in response.activity] if response.activity else None
-                        ),
-                        "model": self.agent_model,
-                        "deployment": self.agent_deployment,
-                    },
-                ),
-            ],
-        )
-        return extra_info

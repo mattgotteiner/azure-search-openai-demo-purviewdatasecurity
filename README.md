@@ -85,32 +85,29 @@ The repo includes sample data so it's ready to try end to end. In this sample ap
 
 ### Steps
 
-1. **Create App Registrations**  
-   Create a app registrations using the Azure portal:
-   - `azure-search-openai-demo-frontend`
+1. Set **required** environment variables:
+```
+azd env set AZURE_AUTH_TENANT_ID <your-tenant-id>
+azd env set AZURE_TENANT_ID <your-tenant-id>
+azd env set USE_FEATURE_INT_VECTORIZATION true
+azd env set AZURE_USE_AUTHENTICATION true
+azd env set AZURE_ENFORCE_ACCESS_CONTROL true
+```
 
-2. **Record Client ID**  
-   Note down the **Application (Client ID)** for the application from the **Overview** section in **App Registrations**.
+2. If you have files with labels, upload them to an existing storage account and container
 
-3. **Add the Permissions  (`Content.Process.User` and `ProtectionScopes.Compute.User`) in the App Registration**  
-   Add a new scope to the **azure-search-openai-demo-frontend** app registration with the following steps:
-   - In the registered app go to `Manage > API permissions`.
-   - Select `Add a Permission`
-   - Choose `Microsoft graph` and select `Delgated Permissions`.
-   - Search for `Content.Process.User` and Select the permission.
-   - Search for `ProtectionScopes.Compute.User` and Select the permission.
-   - Ensure that Grant admin consent is invoked by an administrator.
+3. Set the following environment variables to use this existing storage account and container. Otherwise you'll have to find the newly created storage account and upload them there
+```
+azd env set AZURE_STORAGE_ACCOUNT <your-storage-account>
+azd env set AZURE_STORAGE_CONTAINER <your-storage-container>
+azd env set AZURE_STORAGE_RESOURCE_GROUP <your-storage-resource-group>
+```
 
-4. **Configure Redirect URIs for Frontend App**  
-   - Add the following redirect URIs to the `azure-search-openai-demo-frontend` app registration in `Manage > Authentication`
-     - `http://localhost:50505/`
-     - `http://localhost:5173/` (Make sure this matches the port of your local setup)
-     > This Port allows hot reloading for frontend while using the poweshell script
-     - URL of the deployed web app (retrieved from the Azure portal or printed as "Endpoint" after `azd` completes).
+4. **Run azd up**
 
-5. **Make the App support Multi-teant ID's**
-    - Go to `Manage > Authentication` 
-    - Under Supported account types select `Accounts in any organizational directory (Any Microsoft Entra ID tenant - Multitenant)`
+2. Find the server registration in the [Azure Portal](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps) (Azure Search OpenAI Chat Server App some-number), then grant admin consent
+![Screenshot](./admin_consent_screenshot.png)
+
 
 6. Now [get started](#getting-started) with the setup for deployment.
 
