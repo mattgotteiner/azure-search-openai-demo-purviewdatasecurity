@@ -81,8 +81,6 @@ The repo includes sample data so it's ready to try end to end. In this sample ap
   - Your Azure account must have `Microsoft.Authorization/roleAssignments/write` permissions, such as [Role Based Access Control Administrator](https://learn.microsoft.com/azure/role-based-access-control/built-in-roles#role-based-access-control-administrator-preview), [User Access Administrator](https://learn.microsoft.com/azure/role-based-access-control/built-in-roles#user-access-administrator), or [Owner](https://learn.microsoft.com/azure/role-based-access-control/built-in-roles#owner). If you don't have subscription-level permissions, you must be granted [RBAC](https://learn.microsoft.com/azure/role-based-access-control/built-in-roles#role-based-access-control-administrator-preview) for an existing resource group and [deploy to that existing group](docs/deploy_existing.md#resource-group).
   - Your Azure account also needs `Microsoft.Resources/deployments/write` permissions on the subscription level.
 
-## Entra ID App Registration and Code Configuration
-
 ### Steps
 
 1. Set **required** environment variables:
@@ -228,9 +226,6 @@ The steps below will provision Azure resources and deploy the application code t
 4. Run `azd up` - This will provision Azure resources and deploy this sample to those resources, including building the search index based on the files found in the `./data` folder.
     - **Important**: Beware that the resources created by this command will incur immediate costs, primarily from the AI Search resource. These resources may accrue costs even if you interrupt the command before it is fully executed. You can run `azd down` or delete the resources manually to avoid unnecessary spending.
 
-    - Then you'll be prompted to enter the CLIENT ID of the fronted app you had [registered](#entra-id-app-registration-and-code-configuration).
-    
-    !['Prompt to Enter Client ID'](docs/images/enterclientid.png)
     - You will be prompted to select two locations, one for the majority of resources and one for the OpenAI resource, which is currently a short list. That location list is based on the [OpenAI model availability table](https://learn.microsoft.com/azure/cognitive-services/openai/concepts/models#model-summary-table-and-region-availability) and may become outdated as availability changes.
 5. After the application has been successfully deployed you will see a URL printed to the console.  Click that URL to interact with the application in your browser.
 It will look like the following:
@@ -258,13 +253,8 @@ azd up
 You can only run a development server locally **after** having successfully run the `azd up` command. If you haven't yet, follow the [deploying](#deploying) steps above.
 
 1. Run `azd auth login` if you have not logged in recently.
-2. Create a `.env` in `app > frontend` file and add your client id there
-```env
-VITE_CLIENT_ID = YOUR_CLIENT_ID
-```
->NOTE: If you're re-deploying make sure to delete this `.env` file as it may override the Client ID that you would've entered during initial deployment.
 
-3. Start the server(This will start a dev server with hot reloading capabilities for both frontend and backend):
+2. Start the server(This will start a dev server with hot reloading capabilities for both frontend and backend):
 
   Windows:
 
@@ -285,7 +275,7 @@ See more tips in [the local development guide](docs/localdev.md).
 
 ## Using the app
 
-- In Azure: navigate to the Azure WebApp deployed by azd. The URL is printed out when azd completes (as "Endpoint"), or you can find it in the Azure portal (Remember to add it in redirect uri ! [See Here](#entra-id-app-registration-and-code-configuration)).
+- In Azure: navigate to the Azure WebApp deployed by azd. The URL is printed out when azd completes (as "Endpoint"), or you can find it in the Azure portal
 - Running locally: navigate to 127.0.0.1:5173
 
 Once in the web app:
@@ -294,38 +284,6 @@ Once in the web app:
 - Explore citations and sources
 - Click on "settings" to try different options, tweak prompts, etc.
 
-### How the Sample Works from a Purview API Integration Perspective
-
-There are three primary steps your app must take to process prompts and responses using **Microsoft Purview**:
-
-1. Compute protection scopes
-2. Process content
-
----
-
-#### 1. Compute Protection Scopes
-
-The first step is to compute the **protection scope state** for the user by calling the _Compute protection scopes_ API. This should be done shortly after the user authenticates.
-
-- **Docs:** [Compute protection scopes](https://learn.microsoft.com/en-us/purview/developer/use-the-api#compute-protection-scopes)
-- **Code:** `app/frontend/src/p4ai/protectionScope.ts`.
-- **Usage:** The API response is processed in `app/frontend/src/api/api.ts`, where the policy details are cached for further use.
-
----
-
-#### 2. Process Content
-
-Finally, the app calls the _Process content_ API using the cached protection scope state.
-
-- For each user activity, the app checks the user's protection scope and calls the API accordingly.
-- Include the cached `ETag` from the protection scopes call in the `If-None-Match` header.
-- The API response provides a decision (`allow`, `restrict`, etc.) for handling the interaction.
-
-- **Docs:** [Process content](https://learn.microsoft.com/en-us/purview/developer/use-the-api#process-content)
-- **Code:** `app/frontend/src/p4ai/processContent.ts`.
-- **Usage:** The API response is processed in `app/frontend/src/api/api.ts`, where the policy details are cached for further use.
-
----
 ## Clean up
 
 To clean up all the resources created by this sample:
